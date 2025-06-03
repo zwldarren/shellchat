@@ -1,39 +1,45 @@
 use clap::Parser;
-use std::process::{Command, Stdio};
-use std::io::{self, Write};
+use dotenv::dotenv;
+use std::io;
 
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// The command to execute
-    #[arg(short, long)]
-    command: String,
+mod cli;
+mod executor;
+mod providers;
 
-    /// Arguments for the command
-    #[arg(last = true)]
-    args: Vec<String>,
-}
+use crate::cli::Args;
+use crate::executor::execute_command;
+use crate::providers::{ShellCommandProvider, openai::OpenAIProvider};
 
-fn execute_command(command: &str, args: &[String]) -> io::Result<()> {
-    let mut cmd = Command::new(command);
-    cmd.args(args);
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv().ok();
 
-    // Capture stdout and stderr
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-
-    let output = cmd.output()?;
-
-    io::stdout().write_all(&output.stdout)?;
-    io::stderr().write_all(&output.stderr)?;
-
-    Ok(())
-}
-
-fn main() -> io::Result<()> {
     let args = Args::parse();
 
-    execute_command(&args.command, &args.args)?;
+    let provider: Box<dyn ShellCommandProvider> = match args.provider.as_str() {
+        "openai" => Box::new(OpenAIProvider),
+        _ => return Err(format!("Unsupported provider: {}", args.provider).into()),
+    };
 
+    let model = args.model.unwrap_or_else(|| match args.provider.as_str() {
+        "openai" => "gpt-4.1-mini".to_string(),
+        _ => "default".to_string(),
+    });
+
+    let command = provider.get_shell_command(&args.query, &model).await?;
+    println!("Generated command: ```bash\n{}\n```", command);
+
+    if !args.yes {
+        println!("Execute this command? [y/N]");
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Command execution cancelled");
+            return Ok(());
+        }
+    }
+
+    execute_command(&command)?;
     Ok(())
 }
