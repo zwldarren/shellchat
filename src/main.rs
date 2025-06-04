@@ -8,7 +8,7 @@ mod providers;
 
 use crate::cli::Args;
 use crate::executor::execute_command;
-use crate::providers::{ShellCommandProvider, openai::OpenAIProvider};
+use crate::providers::{LLMProvider, openai::OpenAIProvider};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
-    let provider: Box<dyn ShellCommandProvider> = match args.provider.as_str() {
+    let provider: Box<dyn LLMProvider> = match args.provider.as_str() {
         "openai" => Box::new(OpenAIProvider),
         _ => return Err(format!("Unsupported provider: {}", args.provider).into()),
     };

@@ -1,4 +1,4 @@
-use super::ShellCommandProvider;
+use super::LLMProvider;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -29,7 +29,7 @@ struct Choice {
 pub struct OpenAIProvider;
 
 #[async_trait::async_trait]
-impl ShellCommandProvider for OpenAIProvider {
+impl LLMProvider for OpenAIProvider {
     async fn get_shell_command(
         &self,
         query: &str,
@@ -49,7 +49,7 @@ impl ShellCommandProvider for OpenAIProvider {
                 role: "user".to_string(),
                 content: format!("Convert this to a single bash command: {}", query),
             }],
-            temperature: 0.3,
+            temperature: 0.0,
         };
 
         let response = client
