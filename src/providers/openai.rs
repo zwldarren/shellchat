@@ -5,16 +5,18 @@ use std::env;
 
 pub struct OpenAIProvider {
     pub endpoint: Option<String>,
+    pub api_key: Option<String>,
 }
 
 impl OpenAIProvider {
-    pub fn new() -> Self {
-        Self { endpoint: None }
+    pub fn new(api_key: Option<String>) -> Self {
+        Self { endpoint: None, api_key }
     }
 
-    pub fn with_endpoint(endpoint: String) -> Self {
+    pub fn with_endpoint(endpoint: String, api_key: Option<String>) -> Self {
         Self {
             endpoint: Some(endpoint),
+            api_key,
         }
     }
 }
@@ -27,7 +29,11 @@ impl LLMProvider for OpenAIProvider {
         user_prompt: &str,
         model: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        let api_key = env::var("OPENAI_API_KEY").map_err(|_| "OPENAI_API_KEY must be set")?;
+        let api_key = match &self.api_key {
+            Some(key) => key.clone(),
+            None => env::var("OPENAI_API_KEY").map_err(|_| "OPENAI_API_KEY must be set from config or environment variable")?,
+        };
+
         if api_key.trim().is_empty() {
             return Err("OPENAI_API_KEY cannot be empty".into());
         }
@@ -75,8 +81,7 @@ impl LLMProvider for OpenAIProvider {
             None => return Err("No content in API response".into()),
         };
 
-        // Process the response to remove code block syntax
-        let command = super::process_response(content);
+        let command = content.to_string();
 
         if command.is_empty() {
             return Err("Empty command received from API".into());

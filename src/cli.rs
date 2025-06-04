@@ -14,15 +14,15 @@ pub struct Args {
     #[arg(short, long)]
     pub yes: bool,
 
-    /// AI provider (e.g. "openai")
-    #[arg(short, long, default_value = "openai")]
-    pub provider: String,
+    /// AI provider (e.g. "openai") - defaults from config.yaml if not specified
+    #[arg(short, long)]
+    pub provider: Option<String>,
 
-    /// API Endpoint for the provider
-    #[arg(short, long, default_value = "https://api.openai.com/v1")]
-    pub base_url: String,
+    /// API Endpoint for the provider - defaults from config.yaml if not specified
+    #[arg(short, long)]
+    pub base_url: Option<String>,
 
-    /// Model name (e.g. "gpt-4.1-mini")
-    #[arg(short, long, default_value = "gpt-4.1-mini")]
-    pub model: String,
+    /// Model name (e.g. "gpt-4.1-mini") - defaults from config.yaml if not specified
+    #[arg(short, long)]
+    pub model: Option<String>,
 }

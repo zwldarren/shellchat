@@ -3,7 +3,23 @@ use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
 use std::env;
 
-pub struct OpenRouterProvider;
+pub struct OpenRouterProvider {
+    pub endpoint: Option<String>,
+    pub api_key: Option<String>,
+}
+
+impl OpenRouterProvider {
+    pub fn new(api_key: Option<String>) -> Self {
+        Self { endpoint: None, api_key }
+    }
+
+    pub fn with_endpoint(endpoint: String, api_key: Option<String>) -> Self {
+        Self {
+            endpoint: Some(endpoint),
+            api_key,
+        }
+    }
+}
 
 #[async_trait::async_trait]
 impl LLMProvider for OpenRouterProvider {
@@ -13,17 +29,25 @@ impl LLMProvider for OpenRouterProvider {
         user_prompt: &str,
         model: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        let api_key = env::var("OPENROUTER_API_KEY")?;
+        let api_key = match &self.api_key {
+            Some(key) => key.clone(),
+            None => env::var("OPENROUTER_API_KEY").map_err(|_| "OPENROUTER_API_KEY must be set from config or environment variable")?,
+        };
 
         if api_key.trim().is_empty() {
             return Err("OPENROUTER_API_KEY cannot be empty".into());
         }
 
-        // Build the OpenRouter client
-        let mut client = OpenAIClient::builder()
-            .with_endpoint("https://openrouter.ai/api/v1")
-            .with_api_key(api_key)
-            .build()?;
+        // Build the client
+        let mut client_builder = OpenAIClient::builder().with_api_key(api_key);
+
+        // Set endpoint if explicitly provided, otherwise use default OpenRouter endpoint
+        let endpoint = self.endpoint.as_ref()
+            .map(|e| e.as_str())
+            .unwrap_or("https://openrouter.ai/api/v1");
+        client_builder = client_builder.with_endpoint(endpoint);
+
+        let mut client = client_builder.build()?;
 
         // Create the chat completion request
         let req = ChatCompletionRequest::new(
@@ -58,8 +82,7 @@ impl LLMProvider for OpenRouterProvider {
             None => return Err("No content in API response".into()),
         };
 
-        // Process the response to remove code block syntax
-        let command = super::process_response(content);
+        let command = content.to_string();
 
         if command.is_empty() {
             return Err("Empty command received from API".into());

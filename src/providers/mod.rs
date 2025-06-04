@@ -12,7 +12,7 @@ pub trait LLMProvider {
 }
 
 /// Process response text to remove unrelated content
-fn process_response(content: &str) -> String {
+pub fn process_response(content: &str) -> String {
     let trimmed = content.trim();
 
     // Look for code blocks anywhere in the response
