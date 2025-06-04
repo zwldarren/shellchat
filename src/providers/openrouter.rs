@@ -3,44 +3,27 @@ use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
 use std::env;
 
-pub struct OpenAIProvider {
-    pub endpoint: Option<String>,
-}
-
-impl OpenAIProvider {
-    pub fn new() -> Self {
-        Self { endpoint: None }
-    }
-
-    pub fn with_endpoint(endpoint: String) -> Self {
-        Self {
-            endpoint: Some(endpoint),
-        }
-    }
-}
+pub struct OpenRouterProvider;
 
 #[async_trait::async_trait]
-impl LLMProvider for OpenAIProvider {
+impl LLMProvider for OpenRouterProvider {
     async fn get_response(
         &self,
         system_prompt: &str,
         user_prompt: &str,
         model: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        let api_key = env::var("OPENAI_API_KEY").map_err(|_| "OPENAI_API_KEY must be set")?;
+        let api_key = env::var("OPENROUTER_API_KEY")?;
+
         if api_key.trim().is_empty() {
-            return Err("OPENAI_API_KEY cannot be empty".into());
+            return Err("OPENROUTER_API_KEY cannot be empty".into());
         }
 
-        // Build the client
-        let mut client_builder = OpenAIClient::builder().with_api_key(api_key);
-
-        // Set endpoint if explicitly provided
-        if let Some(endpoint) = &self.endpoint {
-            client_builder = client_builder.with_endpoint(endpoint);
-        }
-
-        let mut client = client_builder.build()?;
+        // Build the OpenRouter client
+        let mut client = OpenAIClient::builder()
+            .with_endpoint("https://openrouter.ai/api/v1")
+            .with_api_key(api_key)
+            .build()?;
 
         // Create the chat completion request
         let req = ChatCompletionRequest::new(

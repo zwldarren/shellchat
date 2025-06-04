@@ -14,11 +14,15 @@ pub struct Args {
     #[arg(short, long)]
     pub yes: bool,
 
-    /// AI provider to use [possible values: openai]
+    /// AI provider (e.g. "openai")
     #[arg(short, long, default_value = "openai")]
     pub provider: String,
 
-    /// Model to use (provider-specific)
-    #[arg(short, long)]
-    pub model: Option<String>,
+    /// API Endpoint for the provider
+    #[arg(short, long, default_value = "https://api.openai.com/v1")]
+    pub base_url: String,
+
+    /// Model name (e.g. "gpt-4.1-mini")
+    #[arg(short, long, default_value = "gpt-4.1-mini")]
+    pub model: String,
 }

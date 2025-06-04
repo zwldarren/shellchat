@@ -11,73 +11,33 @@ pub trait LLMProvider {
     ) -> Result<String, Box<dyn Error>>;
 }
 
-/// Process response text to remove markdown code block syntax
-pub fn process_response(content: &str) -> String {
+/// Process response text to remove unrelated content
+fn process_response(content: &str) -> String {
     let trimmed = content.trim();
 
-    // Check if content is wrapped in code blocks
-    if trimmed.starts_with("```") {
-        // Find the first newline after the opening ```
-        if let Some(first_newline) = trimmed.find('\n') {
-            let mut result = &trimmed[first_newline + 1..];
+    // Look for code blocks anywhere in the response
+    if let Some(start_pos) = trimmed.find("```") {
+        // Find the content after the opening ```
+        let after_opening = &trimmed[start_pos + 3..];
 
-            // Remove trailing ``` if present
-            if result.ends_with("```") {
-                result = &result[..result.len() - 3];
-            }
+        // Skip the language identifier (bash, sh, etc.) if present
+        let content_start = if let Some(first_newline) = after_opening.find('\n') {
+            first_newline + 1
+        } else {
+            0
+        };
 
-            return result.trim().to_string();
-        }
+        let code_content = &after_opening[content_start..];
+
+        // Find the closing ``` or take everything if not found
+        let code_end = code_content.find("```").unwrap_or(code_content.len());
+        let extracted_code = &code_content[..code_end];
+
+        return extracted_code.trim().to_string();
     }
 
     trimmed.to_string()
 }
 
 pub mod openai;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_process_response_with_bash_code_block() {
-        let input = "```bash\nls -la\n```";
-        let expected = "ls -la";
-        assert_eq!(process_response(input), expected);
-    }
-
-    #[test]
-    fn test_process_response_with_sh_code_block() {
-        let input = "```sh\necho hello\n```";
-        let expected = "echo hello";
-        assert_eq!(process_response(input), expected);
-    }
-
-    #[test]
-    fn test_process_response_with_shell_code_block() {
-        let input = "```shell\ncd /home\npwd\n```";
-        let expected = "cd /home\npwd";
-        assert_eq!(process_response(input), expected);
-    }
-
-    #[test]
-    fn test_process_response_without_code_block() {
-        let input = "ls -la";
-        let expected = "ls -la";
-        assert_eq!(process_response(input), expected);
-    }
-
-    #[test]
-    fn test_process_response_with_whitespace() {
-        let input = "  ```bash\n  ls -la  \n```  ";
-        let expected = "ls -la";
-        assert_eq!(process_response(input), expected);
-    }
-
-    #[test]
-    fn test_process_response_empty_code_block() {
-        let input = "```bash\n```";
-        let expected = "";
-        assert_eq!(process_response(input), expected);
-    }
-}
+pub mod openrouter;

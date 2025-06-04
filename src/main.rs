@@ -8,7 +8,7 @@ mod providers;
 
 use crate::cli::Args;
 use crate::executor::execute_command;
-use crate::providers::{LLMProvider, openai::OpenAIProvider};
+use crate::providers::{LLMProvider, openai::OpenAIProvider, openrouter::OpenRouterProvider};
 
 const SYSTEM_PROMPT_FOR_SHELL: &str = "Convert this to a single bash command: ";
 const SYSTEM_PROMPT_FOR_CHAT: &str = "You are a helpful assistant. Your response is limit to 100 words max. \
@@ -21,14 +21,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     let provider: Box<dyn LLMProvider> = match args.provider.as_str() {
-        "openai" => Box::new(OpenAIProvider),
+        "openai" => {
+            if args.base_url == "https://api.openai.com/v1" {
+                Box::new(OpenAIProvider::new())
+            } else {
+                Box::new(OpenAIProvider::with_endpoint(args.base_url.clone()))
+            }
+        }
+        "openrouter" => Box::new(OpenRouterProvider),
         _ => return Err(format!("Unsupported provider: {}", args.provider).into()),
     };
 
-    let model = args.model.unwrap_or_else(|| match args.provider.as_str() {
-        "openai" => "gpt-4.1-mini".to_string(),
-        _ => "default".to_string(),
-    });
+    let model = args.model;
 
     let response = if args.shell {
         provider
