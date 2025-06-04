@@ -30,25 +30,32 @@ pub struct OpenAIProvider;
 
 #[async_trait::async_trait]
 impl LLMProvider for OpenAIProvider {
-    async fn get_shell_command(
+    async fn get_response(
         &self,
-        query: &str,
+        system_prompt: &str,
+        user_prompt: &str,
         model: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let client = Client::new();
-        let api_key = env::var("OPENAI_API_KEY")
-            .map_err(|_| "OPENAI_API_KEY environment variable not set")?;
+        let api_key = env::var("OPENAI_API_KEY")?;
 
         if api_key.trim().is_empty() {
             return Err("OPENAI_API_KEY cannot be empty".into());
         }
 
+        let system_message = Message {
+            role: "system".to_string(),
+            content: system_prompt.to_string(),
+        };
+
+        let user_message = Message {
+            role: "user".to_string(),
+            content: user_prompt.to_string(),
+        };
+
         let request = OpenAIRequest {
             model: model.to_string(),
-            messages: vec![Message {
-                role: "user".to_string(),
-                content: format!("Convert this to a single bash command: {}", query),
-            }],
+            messages: vec![system_message, user_message],
             temperature: 0.0,
         };
 
@@ -72,16 +79,8 @@ impl LLMProvider for OpenAIProvider {
 
         let content = api_response.choices[0].message.content.trim();
 
-        let command = if content.starts_with("```") {
-            content
-                .trim_start_matches("```bash")
-                .trim_start_matches("```")
-                .trim_end_matches("```")
-                .trim()
-                .to_string()
-        } else {
-            content.lines().next().unwrap_or("").trim().to_string()
-        };
+        // Process the response to remove code block syntax
+        let command = super::process_response(content);
 
         if command.is_empty() {
             return Err("Empty command received from API".into());

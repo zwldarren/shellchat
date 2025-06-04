@@ -10,6 +10,10 @@ use crate::cli::Args;
 use crate::executor::execute_command;
 use crate::providers::{LLMProvider, openai::OpenAIProvider};
 
+const SYSTEM_PROMPT_FOR_SHELL: &str = "Convert this to a single bash command: ";
+const SYSTEM_PROMPT_FOR_CHAT: &str = "You are a helpful assistant. Your response is limit to 100 words max. \
+     Respond directly to the query without additional explanation unless asked.";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
@@ -26,8 +30,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => "default".to_string(),
     });
 
-    let command = provider.get_shell_command(&args.query, &model).await?;
-    println!("Generated command: ```bash\n{}\n```", command);
+    let response = if args.shell {
+        provider
+            .get_response(&SYSTEM_PROMPT_FOR_SHELL, &args.query, &model)
+            .await?
+    } else {
+        provider
+            .get_response(SYSTEM_PROMPT_FOR_CHAT, &args.query, &model)
+            .await?
+    };
+
+    if !args.shell {
+        println!("\nAI Response:\n{}\n", response);
+        return Ok(());
+    }
+
+    let command = response;
+    println!("Generated command: \n{}\n", command);
 
     if !args.yes {
         println!("Execute this command? [y/N]");

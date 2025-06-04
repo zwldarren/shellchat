@@ -3,8 +3,12 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    /// Natural language query to convert to shell command
+    /// Natural language query to chat with AI
     pub query: String,
+
+    /// Generate and execute shell command
+    #[arg(short, long)]
+    pub shell: bool,
 
     /// Auto-confirm command execution without prompt
     #[arg(short, long)]
