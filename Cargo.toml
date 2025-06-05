@@ -9,4 +9,6 @@ tokio = { version = "1", features = ["full"] }
 dotenv = "0.15"
 async-trait = "0.1"
 openai-api-rs = "6.0.6"
-yaml-rust2 = "0.10"
+dirs = "6.0.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_yml = "0.0.12"

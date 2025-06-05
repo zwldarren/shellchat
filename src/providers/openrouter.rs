@@ -10,7 +10,10 @@ pub struct OpenRouterProvider {
 
 impl OpenRouterProvider {
     pub fn new(api_key: Option<String>) -> Self {
-        Self { endpoint: None, api_key }
+        Self {
+            endpoint: None,
+            api_key,
+        }
     }
 
     pub fn with_endpoint(endpoint: String, api_key: Option<String>) -> Self {
@@ -31,7 +34,9 @@ impl LLMProvider for OpenRouterProvider {
     ) -> Result<String, Box<dyn std::error::Error>> {
         let api_key = match &self.api_key {
             Some(key) => key.clone(),
-            None => env::var("OPENROUTER_API_KEY").map_err(|_| "OPENROUTER_API_KEY must be set from config or environment variable")?,
+            None => env::var("OPENROUTER_API_KEY").map_err(
+                |_| "OPENROUTER_API_KEY must be set from config or environment variable",
+            )?,
         };
 
         if api_key.trim().is_empty() {
@@ -42,7 +47,9 @@ impl LLMProvider for OpenRouterProvider {
         let mut client_builder = OpenAIClient::builder().with_api_key(api_key);
 
         // Set endpoint if explicitly provided, otherwise use default OpenRouter endpoint
-        let endpoint = self.endpoint.as_ref()
+        let endpoint = self
+            .endpoint
+            .as_ref()
             .map(|e| e.as_str())
             .unwrap_or("https://openrouter.ai/api/v1");
         client_builder = client_builder.with_endpoint(endpoint);

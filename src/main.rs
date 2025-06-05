@@ -1,90 +1,45 @@
 use clap::Parser;
+use config::{Config, Provider, ProviderConfig};
 use dotenv::dotenv;
-use std::fs;
 use std::io;
-use yaml_rust2::YamlLoader;
 
 mod cli;
+mod config;
 mod executor;
 mod providers;
 
 use crate::cli::Args;
 use crate::executor::execute_command;
-use crate::providers::{LLMProvider, openai::OpenAIProvider, openrouter::OpenRouterProvider, process_response};
+use crate::providers::{
+    LLMProvider, openai::OpenAIProvider, openrouter::OpenRouterProvider, process_response,
+};
 
 const SYSTEM_PROMPT_FOR_SHELL: &str = "Convert this to a single bash command: ";
-const SYSTEM_PROMPT_FOR_CHAT: &str = "You are a helpful assistant. Answer the following question in a concise manner: ";
+const SYSTEM_PROMPT_FOR_CHAT: &str =
+    "You are a helpful assistant. Answer the following question in a concise manner: ";
 
-#[derive(Debug, Default, Clone)]
-#[allow(dead_code)]
-struct ProviderConfig {
-    api_key: Option<String>,
-    base_url: Option<String>,
-    model: Option<String>,
-}
-
-#[derive(Debug, Default)]
-struct Config {
-    active_provider: Option<String>,
-    providers: std::collections::HashMap<String, ProviderConfig>,
-}
-
-fn load_config() -> Config {
-    let config_path = "config.yaml";
-
-    if let Ok(contents) = fs::read_to_string(config_path) {
-        if let Ok(docs) = YamlLoader::load_from_str(&contents) {
-            if let Some(doc) = docs.first() {
-                let mut providers = std::collections::HashMap::new();
-                if let Some(providers_yml) = doc["providers"].as_hash() {
-                    for (name, config) in providers_yml {
-                        if let Some(name_str) = name.as_str() {
-                            providers.insert(
-                                name_str.to_string(),
-                                ProviderConfig {
-                                    api_key: config["api_key"].as_str().map(|s| s.to_string()),
-                                    base_url: config["base_url"].as_str().map(|s| s.to_string()),
-                                    model: config["model"].as_str().map(|s| s.to_string()),
-                                },
-                            );
-                        }
-                    }
-                }
-
-                return Config {
-                    active_provider: doc["active_provider"].as_str().map(|s| s.to_string()),
-                    providers,
-                };
-            }
-        }
-    }
-
-    Config::default()
-}
-
-fn merge_config_with_args(config: Config, args: &Args) -> (String, String, String, Option<String>) {
-    let provider_name = args
+fn merge_config_with_args(
+    config: &Config,
+    args: &Args,
+) -> (Provider, String, String, Option<String>) {
+    let provider = args
         .provider
-        .clone()
+        .as_ref()
+        .and_then(|p| Provider::from_str(p))
         .or(config.active_provider)
-        .unwrap_or_else(|| "openai".to_string());
+        .unwrap_or_default();
 
     let default_provider_config = ProviderConfig::default();
     let provider_config = config
         .providers
-        .get(&provider_name)
+        .get(&provider)
         .unwrap_or(&default_provider_config);
 
     let base_url = args
         .base_url
         .clone()
         .or(provider_config.base_url.clone())
-        .unwrap_or_else(|| {
-            match provider_name.as_str() {
-                "openrouter" => "https://openrouter.ai/api/v1".to_string(),
-                _ => "https://api.openai.com/v1".to_string(),
-            }
-        });
+        .unwrap_or_else(|| provider.default_base_url().to_string());
 
     let model = args
         .model
@@ -94,7 +49,7 @@ fn merge_config_with_args(config: Config, args: &Args) -> (String, String, Strin
 
     let api_key = provider_config.api_key.clone();
 
-    (provider_name, base_url, model, api_key)
+    (provider, base_url, model, api_key)
 }
 
 #[tokio::main]
@@ -102,25 +57,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
     let args = Args::parse();
-    let config = load_config();
-    let (provider_name, base_url, model, api_key) = merge_config_with_args(config, &args);
+    let config = Config::load();
+    let (provider_enum, base_url, model, api_key) = merge_config_with_args(&config, &args);
 
-    let provider: Box<dyn LLMProvider> = match provider_name.as_str() {
-        "openai" => {
-            if base_url == "https://api.openai.com/v1" {
+    let provider: Box<dyn LLMProvider> = match provider_enum {
+        Provider::OpenAI => {
+            if base_url == provider_enum.default_base_url() {
                 Box::new(OpenAIProvider::new(api_key))
             } else {
                 Box::new(OpenAIProvider::with_endpoint(base_url.clone(), api_key))
             }
         }
-        "openrouter" => {
-            if base_url == "https://openrouter.ai/api/v1" {
+        Provider::OpenRouter => {
+            if base_url == provider_enum.default_base_url() {
                 Box::new(OpenRouterProvider::new(api_key))
             } else {
                 Box::new(OpenRouterProvider::with_endpoint(base_url.clone(), api_key))
             }
         }
-        _ => return Err(format!("Unsupported provider: {}", provider_name).into()),
     };
 
     if args.shell {

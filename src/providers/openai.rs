@@ -10,7 +10,10 @@ pub struct OpenAIProvider {
 
 impl OpenAIProvider {
     pub fn new(api_key: Option<String>) -> Self {
-        Self { endpoint: None, api_key }
+        Self {
+            endpoint: None,
+            api_key,
+        }
     }
 
     pub fn with_endpoint(endpoint: String, api_key: Option<String>) -> Self {
@@ -31,7 +34,8 @@ impl LLMProvider for OpenAIProvider {
     ) -> Result<String, Box<dyn std::error::Error>> {
         let api_key = match &self.api_key {
             Some(key) => key.clone(),
-            None => env::var("OPENAI_API_KEY").map_err(|_| "OPENAI_API_KEY must be set from config or environment variable")?,
+            None => env::var("OPENAI_API_KEY")
+                .map_err(|_| "OPENAI_API_KEY must be set from config or environment variable")?,
         };
 
         if api_key.trim().is_empty() {
