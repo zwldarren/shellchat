@@ -1,6 +1,5 @@
 use clap::Parser;
 use config::{Config, Provider, ProviderConfig};
-use dotenv::dotenv;
 
 mod cli;
 mod config;
@@ -54,8 +53,6 @@ fn merge_config_with_args(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenv().ok();
-
     let args = Args::parse();
     let config = Config::load();
     let (provider_enum, base_url, model, api_key) = merge_config_with_args(&config, &args);

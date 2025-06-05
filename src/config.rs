@@ -62,16 +62,22 @@ impl Config {
     pub fn load() -> Config {
         let config_path = Self::config_path();
 
-        if let Ok(contents) = fs::read_to_string(&config_path) {
-            if let Ok(config) = serde_yml::from_str::<Config>(&contents) {
-                return config;
+        // If config file exists and can be parsed, return it
+        if config_path.exists() {
+            if let Ok(contents) = fs::read_to_string(&config_path) {
+                if let Ok(config) = serde_yml::from_str::<Config>(&contents) {
+                    return config;
+                }
             }
+            return Config::default();
         }
 
-        Config::default()
+        // If config file doesn't exist, create it with default values
+        let config = Config::default();
+        let _ = config.save(); // Ignore save errors
+        config
     }
 
-    #[allow(dead_code)]
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let config_dir = Self::config_dir();
         let config_path = Self::config_path();
