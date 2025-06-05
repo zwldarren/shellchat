@@ -44,6 +44,7 @@ pub struct ProviderConfig {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub active_provider: Option<Provider>,
+    pub auto_confirm: bool,
     pub providers: HashMap<Provider, ProviderConfig>,
 }
 

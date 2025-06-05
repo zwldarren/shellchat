@@ -86,7 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Display AI-generated command using TUI module
         display::display_command(&command);
 
-        if !args.yes {
+        if !args.yes && !config.auto_confirm {
             let execute = display::prompt_execution_confirmation();
 
             if !execute {
