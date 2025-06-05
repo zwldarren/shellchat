@@ -1,9 +1,10 @@
-use std::io::{self, Write};
+use std::io;
 use std::process::{Command, Stdio};
 
+use crate::display;
+
 pub fn execute_command(command: &str) -> io::Result<()> {
-    println!("\nExecuting: {}", command);
-    println!("{}", "-".repeat(40));
+    display::display_execution_banner(command);
 
     let mut cmd = if cfg!(target_os = "windows") {
         let mut c = Command::new("cmd");
@@ -20,14 +21,9 @@ pub fn execute_command(command: &str) -> io::Result<()> {
 
     let output = cmd.output()?;
 
-    if !output.stdout.is_empty() {
-        io::stdout().write_all(&output.stdout)?;
-    }
+    display::display_stdout(&output.stdout);
+    display::display_stderr(&output.stderr);
+    display::display_execution_status(output.status.success());
 
-    if !output.stderr.is_empty() {
-        io::stderr().write_all(&output.stderr)?;
-    }
-
-    println!("{}", "-".repeat(40));
     Ok(())
 }

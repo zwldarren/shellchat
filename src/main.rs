@@ -1,10 +1,10 @@
 use clap::Parser;
 use config::{Config, Provider, ProviderConfig};
 use dotenv::dotenv;
-use std::io;
 
 mod cli;
 mod config;
+mod display;
 mod executor;
 mod providers;
 
@@ -82,15 +82,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .get_response(&SYSTEM_PROMPT_FOR_SHELL, &args.query, &model)
             .await?;
         let command = process_response(&raw_response);
-        println!("Generated command: \n{}\n", command);
+
+        // Display AI-generated command using TUI module
+        display::display_command(&command);
 
         if !args.yes {
-            println!("Execute this command? [y/N]");
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
+            let execute = display::prompt_execution_confirmation();
 
-            if !input.trim().eq_ignore_ascii_case("y") {
-                println!("Command execution cancelled");
+            if !execute {
+                display::display_execution_cancelled();
                 return Ok(());
             }
         }
@@ -100,7 +100,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let response = provider
             .get_response(SYSTEM_PROMPT_FOR_CHAT, &args.query, &model)
             .await?;
-        println!("\nAI Response:\n{}\n", response);
+
+        // Display AI response using TUI module
+        display::display_response(response.as_str());
     }
 
     Ok(())
