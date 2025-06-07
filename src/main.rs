@@ -1,5 +1,7 @@
 use clap::Parser;
 use config::{Config, Provider, ProviderConfig};
+use os_info;
+use std::env;
 
 mod cli;
 mod config;
@@ -13,7 +15,10 @@ use crate::providers::{
     LLMProvider, openai::OpenAIProvider, openrouter::OpenRouterProvider, process_response,
 };
 
-const SYSTEM_PROMPT_FOR_SHELL: &str = "Convert this to a single bash command: ";
+const SYSTEM_PROMPT_FOR_SHELL: &str = "Convert the natural language query to a single command that \
+will work on the current system. Only output the bare command without any explanation or markdown \
+formatting. Include any necessary flags to make the command compatible with the current shell and OS. \
+The current shell is {shell} and the OS is {os_info}.";
 const SYSTEM_PROMPT_FOR_CHAT: &str =
     "You are a helpful assistant. Answer the following question in a concise manner: ";
 
@@ -75,9 +80,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     if args.shell {
-        let raw_response = provider
-            .get_response(&SYSTEM_PROMPT_FOR_SHELL, &args.query, &model)
-            .await?;
+        // Get system information
+        let shell = env::var("SHELL").unwrap_or_else(|_| "unknown".to_string());
+        let os_info = os_info::get();
+        let os_info_str = format!(
+            "{} {} {}",
+            os_info.os_type(),
+            os_info.version(),
+            os_info.bitness()
+        );
+
+        // Create enhanced system prompt
+        let prompt = SYSTEM_PROMPT_FOR_SHELL
+            .replace("{shell}", &shell)
+            .replace("{os_info}", &os_info_str);
+
+        let raw_response = provider.get_response(&prompt, &args.query, &model).await?;
         let command = process_response(&raw_response);
 
         // Display AI-generated command using TUI module
