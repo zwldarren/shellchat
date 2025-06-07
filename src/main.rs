@@ -81,7 +81,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if args.shell {
         // Get system information
-        let shell = env::var("SHELL").unwrap_or_else(|_| "unknown".to_string());
+        let shell = if cfg!(target_os = "windows") {
+            // On Windows, check for PowerShell first, then cmd
+            if env::var("PSModulePath").is_ok() {
+                "powershell.exe".to_string()
+            } else {
+                env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string())
+            }
+        } else {
+            // On Unix-like systems, use SHELL environment variable
+            env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
+        };
+
         let os_info = os_info::get();
         let os_info_str = format!(
             "{} {} {}",

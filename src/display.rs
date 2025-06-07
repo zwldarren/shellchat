@@ -1,5 +1,5 @@
 use console::style;
-use std::io::{self, Write};
+use std::io::{self};
 
 /// Calculate the display width of a string, accounting for wide characters
 fn display_width(s: &str) -> usize {
@@ -307,9 +307,17 @@ pub fn display_stdout(output: &[u8]) {
 
     println!("\n{}", style("📤 OUTPUT:").bold().blue());
     println!("{}", style(&top_border).dim().blue());
-    io::stdout()
-        .write_all(output)
-        .expect("Failed to write stdout");
+
+    // Handle both UTF-8 and non-UTF-8 output
+    match String::from_utf8(output.to_vec()) {
+        Ok(text) => println!("{}", text),
+        Err(e) => {
+            // Fall back to lossy UTF-8 conversion for non-UTF-8 output
+            let text = String::from_utf8_lossy(e.as_bytes());
+            println!("{}", text);
+        }
+    }
+
     println!("{}", style(&bottom_border).dim().blue());
 }
 
@@ -327,9 +335,17 @@ pub fn display_stderr(output: &[u8]) {
 
         println!("\n{}", style("⚠️  ERROR:").bold().red());
         println!("{}", style(&top_border).dim().red());
-        io::stderr()
-            .write_all(output)
-            .expect("Failed to write stderr");
+
+        // Handle both UTF-8 and non-UTF-8 output
+        match String::from_utf8(output.to_vec()) {
+            Ok(text) => eprintln!("{}", text),
+            Err(e) => {
+                // Fall back to lossy UTF-8 conversion for non-UTF-8 output
+                let text = String::from_utf8_lossy(e.as_bytes());
+                eprintln!("{}", text);
+            }
+        }
+
         println!("{}", style(&bottom_border).dim().red());
     }
 }
