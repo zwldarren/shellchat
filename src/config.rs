@@ -1,4 +1,3 @@
-use dirs::config_dir;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -50,9 +49,18 @@ pub struct Config {
 
 impl Config {
     pub fn config_dir() -> PathBuf {
-        config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("shell_chat")
+        #[cfg(windows)]
+        {
+            let home = dirs::home_dir().expect("Could not find home directory");
+            home.join(".config").join("shell_chat")
+        }
+        #[cfg(not(windows))]
+        {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".config")
+                .join("shell_chat")
+        }
     }
 
     pub fn config_path() -> PathBuf {
