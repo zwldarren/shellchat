@@ -21,7 +21,7 @@ schat "What is the capital of France?"
 
 ## Configuration
 
-The configuration file is located at `~/.config/shell_chat/config.yaml`.
+The configuration file is located at `~/.schat.yaml`.
 
 Example configuration:
 ```yaml

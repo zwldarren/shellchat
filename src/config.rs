@@ -51,20 +51,16 @@ impl Config {
     pub fn config_dir() -> PathBuf {
         #[cfg(windows)]
         {
-            let home = dirs::home_dir().expect("Could not find home directory");
-            home.join(".config").join("shell_chat")
+            dirs::home_dir().expect("Could not find home directory")
         }
         #[cfg(not(windows))]
         {
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".config")
-                .join("shell_chat")
+            dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
         }
     }
 
     pub fn config_path() -> PathBuf {
-        Self::config_dir().join("config.yaml")
+        Self::config_dir().join(".schat.yaml")
     }
 
     pub fn load() -> Config {
