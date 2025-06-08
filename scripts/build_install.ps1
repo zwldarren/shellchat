@@ -103,13 +103,13 @@ Version: $(& "$INSTALL_DIR\$BINARY_NAME.exe" --version 2>$null)
 function Uninstall-App {
     # Remove binary file
     $binaryPath = "$INSTALL_DIR\$BINARY_NAME.exe"
-    if (Test-Path $binaryPath)) {
+    if (Test-Path $binaryPath) {
         Remove-Item -Path $binaryPath -Force
         Write-Host "Removed binary file: $binaryPath" -ForegroundColor $GREEN
     }
     
     # Remove config directory
-    if (Test-Path $CONFIG_DIR)) {
+    if (Test-Path $CONFIG_DIR) {
         Remove-Item -Path $CONFIG_DIR -Recurse -Force
         Write-Host "Removed config files: $CONFIG_DIR" -ForegroundColor $GREEN
     }
