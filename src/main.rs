@@ -1,5 +1,7 @@
 use clap::Parser;
 use config::{Config, Provider, ProviderConfig};
+use std::io::{self, Read};
+use is_terminal::IsTerminal;
 
 mod cli;
 mod config;
@@ -81,10 +83,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    let context = if !std::io::stdin().is_terminal() {
+        let mut buffer = String::new();
+        io::stdin().read_to_string(&mut buffer)?;
+        Some(buffer)
+    } else {
+        None
+    };
+
     if args.shell {
         handle_shell_mode(&args, &config, provider, &model, &system_info).await?;
     } else {
-        handle_chat_mode(&args, provider, &model).await?;
+        handle_chat_mode(&args, provider, &model, context).await?;
     }
 
     Ok(())
@@ -102,7 +112,13 @@ async fn handle_shell_mode(
         .replace("{shell}", &system_info.shell_path)
         .replace("{os_info}", &system_info.os_info);
 
-    let raw_response = provider.get_response(&prompt, &args.query, model).await?;
+    let query = match &args.query {
+        Some(q) => q,
+        None => {
+            return Err("Query argument missing for shell mode".into());
+        }
+    };
+    let raw_response = provider.get_response(&prompt, query, model).await?;
     let command = process_response(&raw_response);
 
     display::display_command(&command);
@@ -122,9 +138,19 @@ async fn handle_chat_mode(
     args: &Args,
     provider: Box<dyn LLMProvider>,
     model: &str,
+    context: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let final_query = match (args.query.as_deref(), context) {
+        (Some(arg_q), Some(stdin_ctx)) => format!("{}\n\n{}", stdin_ctx, arg_q),
+        (None, Some(stdin_ctx)) => stdin_ctx,
+        (Some(arg_q), None) => arg_q.to_string(),
+        (None, None) => {
+            return Err("No query provided".into());
+        }
+    };
+
     let response = provider
-        .get_response(SYSTEM_PROMPT_FOR_CHAT, &args.query, model)
+        .get_response(SYSTEM_PROMPT_FOR_CHAT, &final_query, model)
         .await?;
 
     // Display AI response using TUI module

@@ -19,6 +19,16 @@ Chat with AI in the terminal:
 schat "What is the capital of France?"
 ```
 
+Generate a commit message for git changes:
+```bash
+git diff | schat "Generate a commit message for the changes"
+```
+
+Summary a text file:
+```bash
+schat "Summarize the content of this file" < file.txt
+```
+
 ## Configuration
 
 The configuration file is located at `~/.schat.yaml`.
