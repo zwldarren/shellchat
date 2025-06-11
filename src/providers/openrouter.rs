@@ -28,8 +28,7 @@ impl OpenRouterProvider {
 impl LLMProvider for OpenRouterProvider {
     async fn get_response(
         &self,
-        system_prompt: &str,
-        user_prompt: &str,
+        messages: &[super::Message],
         model: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let api_key = match &self.api_key {
@@ -56,26 +55,27 @@ impl LLMProvider for OpenRouterProvider {
 
         let mut client = client_builder.build()?;
 
+        // Convert messages to the required format
+        let messages: Vec<chat_completion::ChatCompletionMessage> = messages
+            .iter()
+            .map(|m| {
+                let role = match m.role {
+                    super::Role::System => chat_completion::MessageRole::system,
+                    super::Role::User => chat_completion::MessageRole::user,
+                    super::Role::Assistant => chat_completion::MessageRole::assistant,
+                };
+                chat_completion::ChatCompletionMessage {
+                    role,
+                    content: chat_completion::Content::Text(m.content.clone()),
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                }
+            })
+            .collect();
+
         // Create the chat completion request
-        let req = ChatCompletionRequest::new(
-            model.to_string(),
-            vec![
-                chat_completion::ChatCompletionMessage {
-                    role: chat_completion::MessageRole::system,
-                    content: chat_completion::Content::Text(system_prompt.to_string()),
-                    name: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                },
-                chat_completion::ChatCompletionMessage {
-                    role: chat_completion::MessageRole::user,
-                    content: chat_completion::Content::Text(user_prompt.to_string()),
-                    name: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                },
-            ],
-        );
+        let req = ChatCompletionRequest::new(model.to_string(), messages);
 
         // Send the request
         let result = client.chat_completion(req).await?;

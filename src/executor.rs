@@ -19,7 +19,6 @@ pub fn execute_command(command: &str, system_info: &SystemInfo) -> io::Result<()
 
     display::display_stdout(&output.stdout);
     display::display_stderr(&output.stderr);
-    display::display_execution_status(output.status.success());
 
     Ok(())
 }

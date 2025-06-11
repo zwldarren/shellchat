@@ -1,7 +1,7 @@
 use clap::Parser;
 use config::{Config, Provider, ProviderConfig};
-use std::io::{self, Read};
 use is_terminal::IsTerminal;
+use std::io::{self, Read};
 
 mod cli;
 mod config;
@@ -12,9 +12,11 @@ mod system;
 mod utils;
 
 use crate::cli::Args;
+use crate::display::UserChoice;
 use crate::executor::execute_command;
 use crate::providers::{
-    LLMProvider, openai::OpenAIProvider, openrouter::OpenRouterProvider, process_response,
+    LLMProvider, Message, Role, openai::OpenAIProvider, openrouter::OpenRouterProvider,
+    process_response,
 };
 use crate::system::SystemInfo;
 
@@ -24,6 +26,9 @@ formatting. Include any necessary flags to make the command compatible with the 
 The current shell is {shell} and the OS is {os_info}.";
 const SYSTEM_PROMPT_FOR_CHAT: &str =
     "You are a helpful assistant. Answer the following question in a concise manner: ";
+const SYSTEM_PROMPT_FOR_DESCRIBE: &str = "Explain the shell command that was just provided in a concise \
+and easy-to-understand way. Describe what the command does, what its main flags/options mean, and \
+provide a simple example if applicable.";
 
 fn merge_config_with_args(
     config: &Config,
@@ -92,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     if args.shell {
-        handle_shell_mode(&args, &config, provider, &model, &system_info).await?;
+        handle_shell_mode(&args, &config, provider, &model, &system_info, context).await?;
     } else {
         handle_chat_mode(&args, provider, &model, context).await?;
     }
@@ -106,31 +111,96 @@ async fn handle_shell_mode(
     provider: Box<dyn LLMProvider>,
     model: &str,
     system_info: &SystemInfo,
+    context: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Create enhanced system prompt
     let prompt = SYSTEM_PROMPT_FOR_SHELL
         .replace("{shell}", &system_info.shell_path)
         .replace("{os_info}", &system_info.os_info);
 
-    let query = match &args.query {
-        Some(q) => q,
-        None => {
+    let final_query = match (args.query.as_deref(), context) {
+        (Some(arg_q), Some(stdin_ctx)) => format!("<pipe>{}</pipe>\n\n{}", stdin_ctx, arg_q),
+        (None, Some(stdin_ctx)) => format!("<pipe>{}</pipe>", stdin_ctx),
+        (Some(arg_q), None) => arg_q.to_string(),
+        (None, None) => {
             return Err("Query argument missing for shell mode".into());
         }
     };
-    let raw_response = provider.get_response(&prompt, query, model).await?;
+    let messages = vec![
+        Message {
+            role: Role::System,
+            content: prompt,
+        },
+        Message {
+            role: Role::User,
+            content: final_query.clone(),
+        },
+    ];
+
+    let raw_response = provider.get_response(&messages, model).await?;
     let command = process_response(&raw_response);
 
     display::display_command(&command);
 
     if !args.yes && !config.auto_confirm {
-        if !display::prompt_execution_confirmation() {
-            display::display_execution_cancelled();
-            return Ok(());
+        match display::prompt_execution_confirmation() {
+            UserChoice::Execute => {
+                execute_command(&command, system_info)?;
+            }
+            UserChoice::Describe => {
+                let mut describe_messages = messages;
+                describe_messages.push(Message {
+                    role: Role::Assistant,
+                    content: command.clone(),
+                });
+                describe_messages.push(Message {
+                    role: Role::User,
+                    content: SYSTEM_PROMPT_FOR_DESCRIBE.to_string(),
+                });
+
+                let describe_response = provider.get_response(&describe_messages, model).await?;
+                display::display_response(&describe_response);
+
+                // Ask again after description
+                match display::prompt_execution_confirmation() {
+                    UserChoice::Execute => {
+                        execute_command(&command, system_info)?;
+                    }
+                    UserChoice::Describe => {
+                        // Recursive describe
+                        let mut new_describe_messages = describe_messages;
+                        new_describe_messages.push(Message {
+                            role: Role::Assistant,
+                            content: describe_response,
+                        });
+                        new_describe_messages.push(Message {
+                            role: Role::User,
+                            content: SYSTEM_PROMPT_FOR_DESCRIBE.to_string(),
+                        });
+
+                        let new_describe_response =
+                            provider.get_response(&new_describe_messages, model).await?;
+                        display::display_response(&new_describe_response);
+
+                        // Final confirmation after second describe
+                        match display::prompt_execution_confirmation() {
+                            UserChoice::Execute => execute_command(&command, system_info)?,
+                            _ => return Ok(()),
+                        }
+                    }
+                    UserChoice::Abort => {
+                        return Ok(());
+                    }
+                }
+            }
+            UserChoice::Abort => {
+                return Ok(());
+            }
         }
+    } else {
+        execute_command(&command, system_info)?;
     }
 
-    execute_command(&command, system_info)?;
     Ok(())
 }
 
@@ -141,17 +211,25 @@ async fn handle_chat_mode(
     context: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let final_query = match (args.query.as_deref(), context) {
-        (Some(arg_q), Some(stdin_ctx)) => format!("{}\n\n{}", stdin_ctx, arg_q),
-        (None, Some(stdin_ctx)) => stdin_ctx,
+        (Some(arg_q), Some(stdin_ctx)) => format!("<pipe>{}</pipe>\n\n{}", stdin_ctx, arg_q),
+        (None, Some(stdin_ctx)) => format!("<pipe>{}</pipe>", stdin_ctx),
         (Some(arg_q), None) => arg_q.to_string(),
         (None, None) => {
             return Err("No query provided".into());
         }
     };
 
-    let response = provider
-        .get_response(SYSTEM_PROMPT_FOR_CHAT, &final_query, model)
-        .await?;
+    let messages = vec![
+        Message {
+            role: Role::System,
+            content: SYSTEM_PROMPT_FOR_CHAT.to_string(),
+        },
+        Message {
+            role: Role::User,
+            content: final_query,
+        },
+    ];
+    let response = provider.get_response(&messages, model).await?;
 
     // Display AI response using TUI module
     display::display_response(response.as_str());

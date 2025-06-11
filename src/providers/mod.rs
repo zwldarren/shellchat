@@ -1,12 +1,24 @@
 use async_trait::async_trait;
 use std::error::Error;
 
+#[derive(Debug, Clone, Copy)]
+pub enum Role {
+    System,
+    User,
+    Assistant,
+}
+
+#[derive(Debug, Clone)]
+pub struct Message {
+    pub role: Role,
+    pub content: String,
+}
+
 #[async_trait]
 pub trait LLMProvider {
     async fn get_response(
         &self,
-        system_prompt: &str,
-        user_prompt: &str,
+        messages: &[Message],
         model: &str,
     ) -> Result<String, Box<dyn Error>>;
 }

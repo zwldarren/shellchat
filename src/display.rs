@@ -1,7 +1,6 @@
 use crate::utils::text::{display_width, wrap_text};
 use console::style;
 use std::env;
-use std::io::{self};
 
 /// Display an AI-generated command in a formatted box
 pub fn display_command(command: &str) {
@@ -35,12 +34,12 @@ pub fn display_command(command: &str) {
             _ => "shell",
         }
     };
-    let shell_header = format!("┌─ {} ", shell_name)
-        + &"─".repeat(width.saturating_sub(9 + shell_name.len()))
-        + "┐";
+    let header_prefix = format!("┌─ {} ", shell_name);
+    let repeat_len = width.saturating_sub(display_width(&header_prefix) + 1);
+    let shell_header = format!("{}{}{}", header_prefix, "─".repeat(repeat_len), "┐");
     let shell_footer = "└".to_string() + &"─".repeat(width - 2) + "┘";
 
-    println!("\n{}", style("🤖 AI GENERATED COMMAND").bold().magenta());
+    println!("\n{}", style("COMMAND:").bold().magenta());
     println!("{}", style(&shell_header).dim().green());
 
     for (i, line) in command_lines.iter().enumerate() {
@@ -59,24 +58,43 @@ pub fn display_command(command: &str) {
     println!("{}", style(&shell_footer).dim().green());
 }
 
+/// Represents the user's choice after being prompted for command execution.
+#[derive(Debug, PartialEq)]
+pub enum UserChoice {
+    Execute,
+    Describe,
+    Abort,
+}
+
 /// Ask user for execution confirmation
-pub fn prompt_execution_confirmation() -> bool {
+pub fn prompt_execution_confirmation() -> UserChoice {
     let term = console::Term::stdout();
     println!(
-        "\n{} {}",
-        style("❓").bold().yellow(),
-        style("Execute this command? [y/N]").bold().cyan()
+        "\n{}",
+        style("Execute this command? [E]xecute, [D]escribe, [A]bort: ")
+            .bold()
+            .cyan()
     );
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .expect("Failed to read input");
 
-    let result = input.trim().eq_ignore_ascii_case("y");
-    if result {
-        term.clear_last_lines(2).expect("Failed to clear prompt");
+    match term.read_line() {
+        Ok(input) => {
+            let choice = input.trim().to_lowercase();
+            if choice == "e" {
+                term.clear_last_lines(2).ok(); // Clear prompt and input line
+                UserChoice::Execute
+            } else if choice == "d" {
+                term.clear_last_lines(2).ok(); // Clear prompt and input line
+                UserChoice::Describe
+            } else {
+                // Default to Abort for 'a' or any other input
+                UserChoice::Abort
+            }
+        }
+        Err(_) => {
+            // If there's an error reading input, default to Abort
+            UserChoice::Abort
+        }
     }
-    result
 }
 
 /// Display an AI response in a formatted box
@@ -110,7 +128,7 @@ pub fn display_response(response: &str) {
     let top_border = "┌".to_string() + &"─".repeat(box_width - 2) + "┐";
     let bottom_border = "└".to_string() + &"─".repeat(box_width - 2) + "┘";
 
-    println!("\n{}", style("🤖 AI RESPONSE").bold().blue());
+    println!("\n{}", style("RESPONSE: ").bold().blue());
     println!("{}", style(&top_border).dim().blue());
 
     for line in wrapped_lines {
@@ -119,30 +137,51 @@ pub fn display_response(response: &str) {
     }
 
     println!("{}", style(&bottom_border).dim().blue());
-    println!("{}", style("═".repeat(box_width)).dim());
 }
 
 /// Display command stdout output
 pub fn display_stdout(output: &[u8]) {
-    // Get terminal width and calculate responsive box width
+    if output.is_empty() {
+        return;
+    }
+    let text = String::from_utf8_lossy(output);
+
     let term = console::Term::stdout();
     let terminal_width = term.size().1 as usize;
-    let width = std::cmp::min(terminal_width.saturating_sub(4), 100).max(50);
+    let max_width = std::cmp::min(terminal_width.saturating_sub(4), 120).max(60);
 
-    let top_border = "┌─ stdout ".to_string() + &"─".repeat(width.saturating_sub(10)) + "┐";
-    let bottom_border = "└".to_string() + &"─".repeat(width - 1) + "┘";
+    let max_line_len = max_width.saturating_sub(4);
+    let wrapped_lines: Vec<String> = text
+        .lines()
+        .flat_map(|line| {
+            if display_width(line) > max_line_len {
+                wrap_text(line, max_line_len)
+            } else {
+                vec![line.to_string()]
+            }
+        })
+        .collect();
 
-    println!("{}", style("📤 OUTPUT:").bold().blue());
+    let content_max_len = wrapped_lines
+        .iter()
+        .map(|line| display_width(line))
+        .max()
+        .unwrap_or(0);
+
+    let header_prefix = "┌─ stdout ";
+    let header_len = display_width(header_prefix) + 1;
+    let box_width = std::cmp::min(max_width, std::cmp::max(content_max_len + 4, header_len));
+
+    let repeat_len = box_width.saturating_sub(display_width(header_prefix) + 1);
+    let top_border = format!("{}{}{}", header_prefix, "─".repeat(repeat_len), "┐");
+    let bottom_border = "└".to_string() + &"─".repeat(box_width - 2) + "┘";
+
+    println!("\n{}", style("OUTPUT:").bold().blue());
     println!("{}", style(&top_border).dim().blue());
 
-    // Handle both UTF-8 and non-UTF-8 output
-    match String::from_utf8(output.to_vec()) {
-        Ok(text) => println!("{}", text),
-        Err(e) => {
-            // Fall back to lossy UTF-8 conversion for non-UTF-8 output
-            let text = String::from_utf8_lossy(e.as_bytes());
-            println!("{}", text);
-        }
+    for line in wrapped_lines {
+        let padding = box_width.saturating_sub(display_width(&line) + 3);
+        println!("│ {}{}│", style(&line).bold().white(), " ".repeat(padding));
     }
 
     println!("{}", style(&bottom_border).dim().blue());
@@ -152,54 +191,46 @@ pub fn display_stdout(output: &[u8]) {
 pub fn display_stderr(output: &[u8]) {
     // Only show error if there is actual error output
     if !output.is_empty() {
-        // Get terminal width and calculate responsive box width
+        let text = String::from_utf8_lossy(output);
+
         let term = console::Term::stdout();
         let terminal_width = term.size().1 as usize;
-        let width = std::cmp::min(terminal_width.saturating_sub(4), 100).max(50);
+        let max_width = std::cmp::min(terminal_width.saturating_sub(4), 120).max(60);
 
-        let top_border = "┌─ stderr ".to_string() + &"─".repeat(width.saturating_sub(10)) + "┐";
-        let bottom_border = "└".to_string() + &"─".repeat(width - 1) + "┘";
+        let max_line_len = max_width.saturating_sub(4);
+        let wrapped_lines: Vec<String> = text
+            .lines()
+            .flat_map(|line| {
+                if display_width(line) > max_line_len {
+                    wrap_text(line, max_line_len)
+                } else {
+                    vec![line.to_string()]
+                }
+            })
+            .collect();
 
-        println!("\n{}", style("⚠️  ERROR:").bold().red());
+        let content_max_len = wrapped_lines
+            .iter()
+            .map(|line| display_width(line))
+            .max()
+            .unwrap_or(0);
+
+        let header_prefix = "┌─ stderr ";
+        let header_len = display_width(header_prefix) + 1;
+        let box_width = std::cmp::min(max_width, std::cmp::max(content_max_len + 4, header_len));
+
+        let repeat_len = box_width.saturating_sub(display_width(header_prefix) + 1);
+        let top_border = format!("{}{}{}", header_prefix, "─".repeat(repeat_len), "┐");
+        let bottom_border = "└".to_string() + &"─".repeat(box_width - 2) + "┘";
+
+        println!("\n{}", style("ERROR:").bold().red());
         println!("{}", style(&top_border).dim().red());
 
-        // Handle both UTF-8 and non-UTF-8 output
-        match String::from_utf8(output.to_vec()) {
-            Ok(text) => eprintln!("{}", text),
-            Err(e) => {
-                // Fall back to lossy UTF-8 conversion for non-UTF-8 output
-                let text = String::from_utf8_lossy(e.as_bytes());
-                eprintln!("{}", text);
-            }
+        for line in wrapped_lines {
+            let padding = box_width.saturating_sub(display_width(&line) + 3);
+            println!("│ {}{}│", style(&line).bold().red(), " ".repeat(padding));
         }
 
         println!("{}", style(&bottom_border).dim().red());
     }
-}
-
-/// Display command execution status
-pub fn display_execution_status(success: bool) {
-    // Get terminal width for consistent display
-    let term = console::Term::stdout();
-    let terminal_width = term.size().1 as usize;
-    let width = std::cmp::min(terminal_width.saturating_sub(4), 100).max(50);
-
-    // Success indicator
-    let status_icon = if success {
-        style("✅ COMPLETED").bold().green()
-    } else {
-        style("❌ FAILED").bold().red()
-    };
-
-    println!("{}", status_icon);
-    println!("{}", style("═".repeat(width)).dim());
-}
-
-/// Display when command execution is cancelled
-pub fn display_execution_cancelled() {
-    println!(
-        "{} {}",
-        console::style("🚫").bold().red(),
-        console::style("Command execution cancelled").bold().red()
-    );
 }
