@@ -327,7 +327,11 @@ async fn handle_chat_mode(
     let response = provider.get_response(&messages, model).await?;
 
     // Display AI response with markdown formatting if needed
-    if response.contains("```") || response.contains('*') || response.contains('`') || response.contains('#') {
+    if response.contains("```")
+        || response.contains('*')
+        || response.contains('`')
+        || response.contains('#')
+    {
         display::display_markdown(&response);
     } else {
         display::display_response(&response);

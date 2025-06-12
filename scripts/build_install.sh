@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration area - modify these variables according to your project
-BINARY_NAME="schat"                     # Your application name (name in Cargo.toml)
+BINARY_NAME="schat"                     # Application name
 INSTALL_PATH="$HOME/.local/bin"         # Default installation path
 CONFIG_DIR="$HOME/.config/$BINARY_NAME" # Configuration directory
 
