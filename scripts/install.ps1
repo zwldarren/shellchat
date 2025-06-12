@@ -38,7 +38,7 @@ $YELLOW = "Yellow"
 
 function Get-Platform {
     if ([Environment]::Is64BitOperatingSystem) {
-        return "x86_64-pc-windows-msvc"
+        return "x86_64-pc-windows-gnu"
     }
     return "unknown"
 }
