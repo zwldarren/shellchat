@@ -59,9 +59,9 @@ install_from_github() {
     # Create install directory if it doesn't exist
     mkdir -p "$INSTALL_PATH"
 
-    # Extract and install with verbose output
+    # Extract and install with verbose output, excluding README.md
     echo -e "${YELLOW}Extracting archive...${NC}"
-    if ! tar -xzvf "$temp_file" -C "$INSTALL_PATH"; then
+    if ! tar -xzvf "$temp_file" -C "$INSTALL_PATH" --exclude='README.md'; then
         echo -e "${RED}Failed to extract archive${NC}"
         exit 1
     fi

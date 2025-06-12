@@ -34,6 +34,27 @@ Summary a text file:
 schat "Summarize the content of this file" < file.txt
 ```
 
+## Installation
+
+### Quick Install from GitHub Releases
+
+Linux Installation:
+```bash
+# One-line install using curl
+curl -sSL https://raw.githubusercontent.com/zwldarren/shellchat/main/scripts/install.sh | bash -s -- install
+
+# Uninstall
+curl -sSL https://raw.githubusercontent.com/zwldarren/shellchat/main/scripts/install.sh | bash -s -- uninstall
+```
+
+Windows Installation:
+```powershell
+# One-line install using irm
+irm https://raw.githubusercontent.com/zwldarren/shellchat/main/scripts/install.ps1 -OutFile $env:TEMP\install.ps1; & $env:TEMP\install.ps1 install
+
+# Uninstall
+irm https://raw.githubusercontent.com/zwldarren/shellchat/main/scripts/install.ps1 -OutFile $env:TEMP\install.ps1; & $env:TEMP\install.ps1 uninstall
+```
 ## Configuration
 
 The configuration file is located at `~/.schat/config.yaml`.
@@ -54,4 +75,3 @@ providers:
     base_url: https://openrouter.ai/api/v1
     model: google/gemini-2.0-flash-001
 ```
-

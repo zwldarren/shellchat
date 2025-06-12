@@ -84,7 +84,7 @@ function Install-From-GitHub {
 
     Write-Host "Extracting archive..." -ForegroundColor $YELLOW
     try {
-        tar -xzvf $tempFile -C $INSTALL_DIR
+        tar -xzvf $tempFile -C $INSTALL_DIR --exclude='README.md'
         if ($LASTEXITCODE -ne 0) {
             throw "tar exited with code $LASTEXITCODE"
         }
@@ -122,7 +122,7 @@ function Install-From-GitHub {
 }
 
 function Uninstall-App {
-    # 移除二进制文件
+    # Remove binary file
     $binaryPath = "$INSTALL_DIR\$BINARY_NAME.exe"
     if (Test-Path $binaryPath) {
         Remove-Item -Path $binaryPath -Force -ErrorAction SilentlyContinue
