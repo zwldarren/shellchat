@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use futures::stream::BoxStream;
 use std::error::Error;
 
 #[derive(Debug, Clone, Copy)]
@@ -21,35 +22,56 @@ pub trait LLMProvider {
         messages: &[Message],
         model: &str,
     ) -> Result<String, Box<dyn Error>>;
+
+    async fn get_response_stream(
+        &self,
+        messages: &[Message],
+        model: &str,
+    ) -> Result<BoxStream<'static, Result<String, Box<dyn Error + Send + Sync>>>, Box<dyn Error>>;
 }
 
-/// Process response text to remove unrelated content
+/// Process response text to extract command or code block
 pub fn process_response(content: &str) -> String {
-    let trimmed = content.trim();
+    let content = content.trim();
 
-    // Look for code blocks anywhere in the response
-    if let Some(start_pos) = trimmed.find("```") {
-        // Find the content after the opening ```
-        let after_opening = &trimmed[start_pos + 3..];
-
-        // Skip the language identifier (bash, sh, etc.) if present
-        let content_start = if let Some(first_newline) = after_opening.find('\n') {
-            first_newline + 1
-        } else {
-            0
-        };
-
-        let code_content = &after_opening[content_start..];
-
-        // Find the closing ``` or take everything if not found
-        let code_end = code_content.find("```").unwrap_or(code_content.len());
-        let extracted_code = &code_content[..code_end];
-
-        return extracted_code.trim().to_string();
+    // Handle empty response
+    if content.is_empty() {
+        return String::new();
     }
 
-    trimmed.to_string()
+    // Look for code blocks
+    if let Some(start_idx) = content.find("```") {
+        let after_start = &content[start_idx + 3..];
+        let end_idx = after_start.find("```").map(|i| i + start_idx + 3);
+
+        let code_block = if let Some(end_idx) = end_idx {
+            &content[start_idx + 3..end_idx]
+        } else {
+            &content[start_idx + 3..]
+        };
+
+        // Remove language specifier if present
+        if let Some(first_newline) = code_block.find('\n') {
+            return code_block[first_newline + 1..].trim().to_string();
+        }
+        return code_block.trim().to_string();
+    }
+
+    // Look for command in quotes
+    if let Some(start) = content.find('`') {
+        if let Some(end) = content[start + 1..].find('`').map(|i| i + start + 1) {
+            return content[start + 1..end].trim().to_string();
+        }
+    }
+
+    // Fallback: return first non-empty line
+    content
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.trim().to_string())
+        .unwrap_or_else(|| content.to_string())
 }
 
+pub mod base_client;
 pub mod openai;
 pub mod openrouter;

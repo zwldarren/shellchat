@@ -42,27 +42,26 @@ fn merge_config_with_args(
         .or(config.active_provider)
         .unwrap_or_default();
 
-    let default_provider_config = ProviderConfig::default();
-    let provider_config = config
-        .providers
-        .get(&provider)
-        .unwrap_or(&default_provider_config);
+    let default_config: ProviderConfig = ProviderConfig {
+        base_url: None,
+        model: None,
+        api_key: None,
+    };
+    let provider_config = config.providers.get(&provider).unwrap_or(&default_config);
 
     let base_url = args
         .base_url
         .clone()
-        .or(provider_config.base_url.clone())
+        .or_else(|| provider_config.base_url.clone())
         .unwrap_or_else(|| provider.default_base_url().to_string());
 
     let model = args
         .model
         .clone()
-        .or(provider_config.model.clone())
+        .or_else(|| provider_config.model.clone())
         .unwrap_or_else(|| "gpt-4.1-mini".to_string());
 
-    let api_key = provider_config.api_key.clone();
-
-    (provider, base_url, model, api_key)
+    (provider, base_url, model, provider_config.api_key.clone())
 }
 
 #[tokio::main]
@@ -145,62 +144,62 @@ async fn handle_shell_mode(
 
     display::display_command(&command);
 
-    if !args.yes && !config.auto_confirm {
-        match display::prompt_execution_confirmation() {
+    // State machine for command confirmation
+    enum State {
+        Initial,
+        AfterFirstDescribe(Vec<Message>),
+        AfterSecondDescribe(Vec<Message>),
+    }
+
+    let mut state = State::Initial;
+    let mut execute = args.yes || config.auto_confirm;
+
+    while !execute {
+        let choice = display::prompt_execution_confirmation();
+
+        match choice {
             UserChoice::Execute => {
-                execute_command(&command, system_info)?;
+                execute = true;
             }
             UserChoice::Describe => {
-                let mut describe_messages = messages;
-                describe_messages.push(Message {
+                let mut current_messages = match &state {
+                    State::Initial => messages.clone(),
+                    State::AfterFirstDescribe(msgs) => msgs.clone(),
+                    State::AfterSecondDescribe(msgs) => msgs.clone(),
+                };
+
+                current_messages.push(Message {
                     role: Role::Assistant,
                     content: command.clone(),
                 });
-                describe_messages.push(Message {
+                current_messages.push(Message {
                     role: Role::User,
                     content: SYSTEM_PROMPT_FOR_DESCRIBE.to_string(),
                 });
 
-                let describe_response = provider.get_response(&describe_messages, model).await?;
+                let describe_response = provider.get_response(&current_messages, model).await?;
                 display::display_response(&describe_response);
 
-                // Ask again after description
-                match display::prompt_execution_confirmation() {
-                    UserChoice::Execute => {
-                        execute_command(&command, system_info)?;
-                    }
-                    UserChoice::Describe => {
-                        // Recursive describe
-                        let mut new_describe_messages = describe_messages;
-                        new_describe_messages.push(Message {
-                            role: Role::Assistant,
-                            content: describe_response,
-                        });
-                        new_describe_messages.push(Message {
-                            role: Role::User,
-                            content: SYSTEM_PROMPT_FOR_DESCRIBE.to_string(),
-                        });
+                current_messages.push(Message {
+                    role: Role::Assistant,
+                    content: describe_response,
+                });
 
-                        let new_describe_response =
-                            provider.get_response(&new_describe_messages, model).await?;
-                        display::display_response(&new_describe_response);
-
-                        // Final confirmation after second describe
-                        match display::prompt_execution_confirmation() {
-                            UserChoice::Execute => execute_command(&command, system_info)?,
-                            _ => return Ok(()),
-                        }
+                state = match state {
+                    State::Initial => State::AfterFirstDescribe(current_messages),
+                    State::AfterFirstDescribe(_) => State::AfterSecondDescribe(current_messages),
+                    State::AfterSecondDescribe(_) => {
+                        break;
                     }
-                    UserChoice::Abort => {
-                        return Ok(());
-                    }
-                }
+                };
             }
             UserChoice::Abort => {
                 return Ok(());
             }
         }
-    } else {
+    }
+
+    if execute {
         execute_command(&command, system_info)?;
     }
 
@@ -239,12 +238,34 @@ async fn handle_continuous_chat_mode(
             content: input.to_string(),
         });
 
-        let response = provider.get_response(&messages, model).await?;
-        display::display_response(&response);
+        // Use streaming response
+        use futures::StreamExt;
+        let mut stream = provider.get_response_stream(&messages, model).await?;
+
+        io::stdout().flush()?;
+
+        let mut full_response = String::new();
+        while let Some(chunk_result) = stream.next().await {
+            match chunk_result {
+                Ok(chunk) => {
+                    print!("{}", chunk);
+                    io::stdout().flush()?;
+                    full_response.push_str(&chunk);
+                }
+                Err(e) => {
+                    eprintln!("Stream error: {}", e);
+                    break;
+                }
+            }
+        }
+
+        if !full_response.ends_with('\n') {
+            println!();
+        }
 
         messages.push(Message {
             role: Role::Assistant,
-            content: response,
+            content: full_response,
         });
     }
 

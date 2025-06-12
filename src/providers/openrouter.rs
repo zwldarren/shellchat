@@ -1,18 +1,19 @@
 use super::LLMProvider;
-use reqwest::Client;
+use crate::providers::base_client::BaseApiClient;
 use serde::{Deserialize, Serialize};
-use std::env;
+use std::error::Error;
 
 #[derive(Serialize)]
-struct ChatCompletionRequest<'a> {
-    model: &'a str,
-    messages: Vec<ChatCompletionMessage<'a>>,
+struct ChatCompletionRequest {
+    model: String,
+    messages: Vec<ChatCompletionMessage>,
+    stream: Option<bool>,
 }
 
 #[derive(Serialize)]
-struct ChatCompletionMessage<'a> {
-    role: &'a str,
-    content: &'a str,
+struct ChatCompletionMessage {
+    role: String,
+    content: String,
 }
 
 #[derive(Deserialize)]
@@ -31,22 +32,36 @@ struct MessageContent {
 }
 
 pub struct OpenRouterProvider {
-    pub endpoint: Option<String>,
-    pub api_key: Option<String>,
+    client: BaseApiClient,
 }
 
 impl OpenRouterProvider {
     pub fn new(api_key: Option<String>) -> Self {
+        let endpoint = "https://openrouter.ai/api/v1".to_string();
+        let mut extra_headers = std::collections::HashMap::new();
+        extra_headers.insert(
+            "HTTP-Referer".to_string(),
+            "https://github.com/zwldarren/shellchat".to_string(),
+        );
+        extra_headers.insert("X-Title".to_string(), "ShellChat".to_string());
+
+        let api_key = api_key.unwrap_or_default();
         Self {
-            endpoint: None,
-            api_key,
+            client: BaseApiClient::new(endpoint, api_key, Some(extra_headers)),
         }
     }
 
     pub fn with_endpoint(endpoint: String, api_key: Option<String>) -> Self {
+        let mut extra_headers = std::collections::HashMap::new();
+        extra_headers.insert(
+            "HTTP-Referer".to_string(),
+            "https://github.com/zwldarren/shellchat".to_string(),
+        );
+        extra_headers.insert("X-Title".to_string(), "ShellChat".to_string());
+
+        let api_key = api_key.unwrap_or_default();
         Self {
-            endpoint: Some(endpoint),
-            api_key,
+            client: BaseApiClient::new(endpoint, api_key, Some(extra_headers)),
         }
     }
 }
@@ -57,65 +72,77 @@ impl LLMProvider for OpenRouterProvider {
         &self,
         messages: &[super::Message],
         model: &str,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let api_key = match &self.api_key {
-            Some(key) => key.clone(),
-            None => env::var("OPENROUTER_API_KEY").map_err(
-                |_| "OPENROUTER_API_KEY must be set from config or environment variable",
-            )?,
-        };
-
-        if api_key.trim().is_empty() {
-            return Err("OPENROUTER_API_KEY cannot be empty".into());
-        }
-
-        let client = Client::builder().build()?;
-
+    ) -> Result<String, Box<dyn Error>> {
         let req_messages: Vec<ChatCompletionMessage> = messages
             .iter()
             .map(|m| ChatCompletionMessage {
                 role: match m.role {
-                    super::Role::System => "system",
-                    super::Role::User => "user",
-                    super::Role::Assistant => "assistant",
+                    super::Role::System => "system".to_string(),
+                    super::Role::User => "user".to_string(),
+                    super::Role::Assistant => "assistant".to_string(),
                 },
-                content: &m.content,
+                content: m.content.clone(),
             })
             .collect();
 
         let payload = ChatCompletionRequest {
-            model,
+            model: model.to_string(),
             messages: req_messages,
+            stream: None,
         };
 
-        let endpoint = self
-            .endpoint
-            .as_deref()
-            .unwrap_or("https://openrouter.ai/api/v1");
-        let url = format!("{}/chat/completions", endpoint);
-
-        let response = client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("HTTP-Referer", "https://github.com/zwldarren/shellchat")
-            .header("X-Title", "ShellChat")
-            .header("Content-Type", "application/json")
-            .json(&payload)
-            .send()
-            .await?
-            .json::<ChatCompletionResponse>()
+        let response = self
+            .client
+            .send_request("chat/completions", &payload)
             .await?;
 
-        if response.choices.is_empty() {
+        let response_body = response.text().await?;
+        let parsed: ChatCompletionResponse = serde_json::from_str(&response_body)?;
+
+        if parsed.choices.is_empty() {
             return Err("No choices in API response".into());
         }
 
-        let content = response.choices[0].message.content.trim().to_string();
+        let content = parsed.choices[0].message.content.trim().to_string();
 
         if content.is_empty() {
             return Err("Empty command received from API".into());
         }
 
         Ok(content)
+    }
+
+    async fn get_response_stream(
+        &self,
+        messages: &[super::Message],
+        model: &str,
+    ) -> Result<
+        futures::stream::BoxStream<'static, Result<String, Box<dyn Error + Send + Sync>>>,
+        Box<dyn Error>,
+    > {
+        let req_messages: Vec<ChatCompletionMessage> = messages
+            .iter()
+            .map(|m| ChatCompletionMessage {
+                role: match m.role {
+                    super::Role::System => "system".to_string(),
+                    super::Role::User => "user".to_string(),
+                    super::Role::Assistant => "assistant".to_string(),
+                },
+                content: m.content.clone(),
+            })
+            .collect();
+
+        let payload = ChatCompletionRequest {
+            model: model.to_string(),
+            messages: req_messages,
+            stream: Some(true),
+        };
+
+        let stream = self
+            .client
+            .get_response_stream("chat/completions", &payload)
+            .await?;
+
+        Ok(stream)
     }
 }
