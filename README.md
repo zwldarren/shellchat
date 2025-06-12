@@ -36,7 +36,7 @@ schat "Summarize the content of this file" < file.txt
 
 ## Configuration
 
-The configuration file is located at `~/.schat.yaml`.
+The configuration file is located at `~/.schat/config.yaml`.
 
 Example configuration:
 ```yaml

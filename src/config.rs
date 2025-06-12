@@ -60,24 +60,43 @@ impl Config {
     }
 
     pub fn config_path() -> PathBuf {
-        Self::config_dir().join(".schat.yaml")
+        Self::config_dir().join(".schat").join("config.yaml")
     }
 
     pub fn load() -> Config {
         let config_path = Self::config_path();
+        let config_dir = Self::config_dir().join(".schat");
 
         // If config file exists and can be parsed, return it
         if config_path.exists() {
             if let Ok(contents) = fs::read_to_string(&config_path) {
-                if let Ok(config) = serde_yml::from_str::<Config>(&contents) {
-                    return config;
+                match serde_yml::from_str::<Config>(&contents) {
+                    Ok(mut config) => {
+                        // Ensure providers HashMap exists
+                        if config.providers.is_empty() {
+                            config.providers = HashMap::new();
+                        }
+                        return config;
+                    }
+                    Err(e) => {
+                        eprintln!("Error parsing config file: {}", e);
+                        // Fall through to create new config
+                    }
                 }
             }
-            return Config::default();
         }
 
-        // If config file doesn't exist, create it with default values
-        let config = Config::default();
+        // Ensure config directory exists
+        if !config_dir.exists() {
+            let _ = fs::create_dir_all(&config_dir);
+        }
+
+        // Create new config with defaults
+        let config = Config {
+            active_provider: None,
+            auto_confirm: false,
+            providers: HashMap::new(),
+        };
         let _ = config.save(); // Ignore save errors
         config
     }
