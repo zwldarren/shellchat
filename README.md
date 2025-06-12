@@ -19,6 +19,11 @@ Chat with AI in the terminal:
 schat "What is the capital of France?"
 ```
 
+Continuous chat mode (type /quit to exit):
+```bash
+schat --chat
+```
+
 Generate a commit message for git changes:
 ```bash
 git diff | schat "Generate a commit message for the changes"
