@@ -1,10 +1,12 @@
 use clap::Parser;
 use config::{Config, Provider, ProviderConfig};
 use console::style;
+use futures::StreamExt;
 use is_terminal::IsTerminal;
 use std::io::{self, Read, Write};
 
 mod cli;
+mod commands;
 mod config;
 mod display;
 mod executor;
@@ -13,6 +15,7 @@ mod system;
 mod utils;
 
 use crate::cli::Args;
+use crate::commands::{ChatState, create_command_registry};
 use crate::display::UserChoice;
 use crate::executor::execute_command;
 use crate::providers::{
@@ -210,12 +213,10 @@ async fn handle_continuous_chat_mode(
     provider: Box<dyn LLMProvider>,
     model: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut messages = vec![Message {
-        role: Role::System,
-        content: "You are a helpful assistant.".to_string(),
-    }];
+    let mut state = ChatState::new(provider, model);
+    let command_registry = create_command_registry();
 
-    println!("Entering chat mode. Type '/quit' to exit.");
+    println!("Entering chat mode. Type '/help' for available commands.");
 
     loop {
         print!("{}", style("> ").bold().cyan());
@@ -225,22 +226,44 @@ async fn handle_continuous_chat_mode(
         io::stdin().read_line(&mut input)?;
         let input = input.trim();
 
-        if input.eq_ignore_ascii_case("/quit") {
-            break;
-        }
-
         if input.is_empty() {
             continue;
         }
 
-        messages.push(Message {
+        // Check if input is a command
+        if input.starts_with('/') {
+            let parts: Vec<&str> = input[1..].split_whitespace().collect();
+            if !parts.is_empty() {
+                let command = parts[0];
+                let args = if parts.len() > 1 { &parts[1..] } else { &[] };
+
+                match command_registry.execute(command, args, &mut state) {
+                    Ok(Some(output)) => {
+                        println!("{}", output);
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        eprintln!("Error executing command: {}", e);
+                    }
+                }
+
+                if !state.should_continue {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        // Normal message processing
+        state.messages.push(Message {
             role: Role::User,
             content: input.to_string(),
         });
 
-        // Use streaming response
-        use futures::StreamExt;
-        let mut stream = provider.get_response_stream(&messages, model).await?;
+        let mut stream = state
+            .provider
+            .get_response_stream(&state.messages, &state.model)
+            .await?;
 
         io::stdout().flush()?;
 
@@ -263,7 +286,7 @@ async fn handle_continuous_chat_mode(
             println!();
         }
 
-        messages.push(Message {
+        state.messages.push(Message {
             role: Role::Assistant,
             content: full_response,
         });

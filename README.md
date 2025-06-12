@@ -19,7 +19,7 @@ Chat with AI in the terminal:
 schat "What is the capital of France?"
 ```
 
-Continuous chat mode (type /quit to exit):
+Continuous chat mode (type /help for help, /exit to exit):
 ```bash
 schat --chat
 ```
