@@ -271,7 +271,11 @@ async fn handle_continuous_chat_mode(
         while let Some(chunk_result) = stream.next().await {
             match chunk_result {
                 Ok(chunk) => {
-                    print!("{}", chunk);
+                    if !chunk.is_empty() {
+                        let term = console::Term::stdout();
+                        term.clear_last_lines(0).ok(); // Ensure clean rendering
+                        display::display_markdown(&chunk);
+                    }
                     io::stdout().flush()?;
                     full_response.push_str(&chunk);
                 }
@@ -322,8 +326,12 @@ async fn handle_chat_mode(
     ];
     let response = provider.get_response(&messages, model).await?;
 
-    // Display AI response using TUI module
-    display::display_response(response.as_str());
+    // Display AI response with markdown formatting if needed
+    if response.contains("```") || response.contains('*') || response.contains('`') || response.contains('#') {
+        display::display_markdown(&response);
+    } else {
+        display::display_response(&response);
+    }
 
     Ok(())
 }

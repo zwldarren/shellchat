@@ -1,6 +1,14 @@
 use crate::utils::text::{display_width, wrap_text};
 use console::style;
 use std::env;
+use termimad::MadSkin;
+
+/// Display text with markdown formatting
+pub fn display_markdown(text: &str) {
+    let skin = MadSkin::default();
+    println!();
+    skin.print_text(text);
+}
 
 /// Display an AI-generated command in a formatted box
 pub fn display_command(command: &str) {
