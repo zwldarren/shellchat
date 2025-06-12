@@ -274,7 +274,7 @@ async fn handle_continuous_chat_mode(
                     if !chunk.is_empty() {
                         let term = console::Term::stdout();
                         term.clear_last_lines(0).ok(); // Ensure clean rendering
-                        display::display_markdown(&chunk);
+                        print!("{}", &chunk);
                     }
                     io::stdout().flush()?;
                     full_response.push_str(&chunk);
