@@ -1,7 +1,8 @@
 use clap::Parser;
 use config::{Config, Provider, ProviderConfig};
+use console::style;
 use is_terminal::IsTerminal;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 
 mod cli;
 mod config;
@@ -98,6 +99,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if args.shell {
         handle_shell_mode(&args, &config, provider, &model, &system_info, context).await?;
+    } else if args.chat {
+        handle_continuous_chat_mode(provider, &model).await?;
     } else {
         handle_chat_mode(&args, provider, &model, context).await?;
     }
@@ -199,6 +202,50 @@ async fn handle_shell_mode(
         }
     } else {
         execute_command(&command, system_info)?;
+    }
+
+    Ok(())
+}
+
+async fn handle_continuous_chat_mode(
+    provider: Box<dyn LLMProvider>,
+    model: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut messages = vec![Message {
+        role: Role::System,
+        content: "You are a helpful assistant.".to_string(),
+    }];
+
+    println!("Entering chat mode. Type '/quit' to exit.");
+
+    loop {
+        print!("{}", style("> ").bold().cyan());
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+
+        if input.eq_ignore_ascii_case("/quit") {
+            break;
+        }
+
+        if input.is_empty() {
+            continue;
+        }
+
+        messages.push(Message {
+            role: Role::User,
+            content: input.to_string(),
+        });
+
+        let response = provider.get_response(&messages, model).await?;
+        display::display_response(&response);
+
+        messages.push(Message {
+            role: Role::Assistant,
+            content: response,
+        });
     }
 
     Ok(())

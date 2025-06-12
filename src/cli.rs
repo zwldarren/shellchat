@@ -10,6 +10,10 @@ pub struct Args {
     #[arg(short, long)]
     pub shell: bool,
 
+    /// Enter continuous chat mode
+    #[arg(short, long)]
+    pub chat: bool,
+
     /// Auto-confirm command execution without prompt
     #[arg(short, long)]
     pub yes: bool,

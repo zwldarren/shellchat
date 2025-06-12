@@ -1,7 +1,34 @@
 use super::LLMProvider;
-use openai_api_rs::v1::api::OpenAIClient;
-use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::env;
+
+#[derive(Serialize)]
+struct ChatCompletionRequest<'a> {
+    model: &'a str,
+    messages: Vec<ChatCompletionMessage<'a>>,
+}
+
+#[derive(Serialize)]
+struct ChatCompletionMessage<'a> {
+    role: &'a str,
+    content: &'a str,
+}
+
+#[derive(Deserialize)]
+struct ChatCompletionResponse {
+    choices: Vec<Choice>,
+}
+
+#[derive(Deserialize)]
+struct Choice {
+    message: MessageContent,
+}
+
+#[derive(Deserialize)]
+struct MessageContent {
+    content: String,
+}
 
 pub struct OpenAIProvider {
     pub endpoint: Option<String>,
@@ -41,56 +68,51 @@ impl LLMProvider for OpenAIProvider {
             return Err("OPENAI_API_KEY cannot be empty".into());
         }
 
-        // Build the client
-        let mut client_builder = OpenAIClient::builder().with_api_key(api_key);
+        let client = Client::builder().build()?;
 
-        // Set endpoint if explicitly provided
-        if let Some(endpoint) = &self.endpoint {
-            client_builder = client_builder.with_endpoint(endpoint);
-        }
-
-        let mut client = client_builder.build()?;
-
-        // Convert messages to the required format
-        let messages: Vec<chat_completion::ChatCompletionMessage> = messages
+        let req_messages: Vec<ChatCompletionMessage> = messages
             .iter()
-            .map(|m| {
-                let role = match m.role {
-                    super::Role::System => chat_completion::MessageRole::system,
-                    super::Role::User => chat_completion::MessageRole::user,
-                    super::Role::Assistant => chat_completion::MessageRole::assistant,
-                };
-                chat_completion::ChatCompletionMessage {
-                    role,
-                    content: chat_completion::Content::Text(m.content.clone()),
-                    name: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                }
+            .map(|m| ChatCompletionMessage {
+                role: match m.role {
+                    super::Role::System => "system",
+                    super::Role::User => "user",
+                    super::Role::Assistant => "assistant",
+                },
+                content: &m.content,
             })
             .collect();
 
-        // Create the chat completion request
-        let req = ChatCompletionRequest::new(model.to_string(), messages);
+        let payload = ChatCompletionRequest {
+            model,
+            messages: req_messages,
+        };
 
-        // Send the request
-        let result = client.chat_completion(req).await?;
+        let endpoint = self
+            .endpoint
+            .as_deref()
+            .unwrap_or("https://api.openai.com/v1");
+        let url = format!("{}/chat/completions", endpoint);
 
-        if result.choices.is_empty() {
+        let response = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await?
+            .json::<ChatCompletionResponse>()
+            .await?;
+
+        if response.choices.is_empty() {
             return Err("No choices in API response".into());
         }
 
-        let content = match &result.choices[0].message.content {
-            Some(text) => text.trim(),
-            None => return Err("No content in API response".into()),
-        };
+        let content = response.choices[0].message.content.trim().to_string();
 
-        let command = content.to_string();
-
-        if command.is_empty() {
+        if content.is_empty() {
             return Err("Empty command received from API".into());
         }
 
-        Ok(command)
+        Ok(content)
     }
 }
