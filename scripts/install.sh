@@ -43,16 +43,28 @@ install_from_github() {
     local temp_file="/tmp/schat-$platform.tar.gz"
 
     echo -e "${YELLOW}Downloading $BINARY_NAME from GitHub releases...${NC}"
-    if ! curl -sSL -L "$url" -o "$temp_file"; then
+    if ! curl -v -L "$url" -o "$temp_file" 2>&1 | tee /tmp/curl.log; then
         echo -e "${RED}Failed to download binary${NC}"
+        echo -e "${YELLOW}Curl output saved to /tmp/curl.log${NC}"
+        exit 1
+    fi
+
+    # Verify downloaded file
+    if ! file "$temp_file" | grep -q "gzip compressed data"; then
+        echo -e "${RED}Downloaded file is not a valid gzip archive${NC}"
+        echo -e "${YELLOW}File type: $(file "$temp_file")${NC}"
         exit 1
     fi
 
     # Create install directory if it doesn't exist
     mkdir -p "$INSTALL_PATH"
 
-    # Extract and install
-    tar -xzf "$temp_file" -C "$INSTALL_PATH"
+    # Extract and install with verbose output
+    echo -e "${YELLOW}Extracting archive...${NC}"
+    if ! tar -xzvf "$temp_file" -C "$INSTALL_PATH"; then
+        echo -e "${RED}Failed to extract archive${NC}"
+        exit 1
+    fi
     rm "$temp_file"
 
     chmod +x "$INSTALL_PATH/$BINARY_NAME"

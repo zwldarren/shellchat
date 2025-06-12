@@ -61,11 +61,20 @@ function Install-From-GitHub {
     $tempFile = "$env:TEMP\schat-$platform.tar.gz"
 
     Write-Host "Downloading $BINARY_NAME from GitHub releases..." -ForegroundColor $YELLOW
+    Write-Host "Download URL: $url" -ForegroundColor $YELLOW
     try {
-        Invoke-WebRequest -Uri $url -OutFile $tempFile -UseBasicParsing
+        Invoke-WebRequest -Uri $url -OutFile $tempFile -UseBasicParsing -Verbose *>&1 | Out-File "$env:TEMP\install.log"
     } catch {
         Write-Host "Failed to download binary: $_" -ForegroundColor $RED
+        Write-Host "Detailed log saved to $env:TEMP\install.log" -ForegroundColor $YELLOW
         exit 1
+    }
+
+    # Verify downloaded file
+    $fileInfo = Get-Item $tempFile
+    Write-Host "Downloaded file size: $($fileInfo.Length) bytes" -ForegroundColor $YELLOW
+    if ($fileInfo.Length -lt 100KB) {
+        Write-Host "Warning: Downloaded file seems unusually small" -ForegroundColor $YELLOW
     }
 
     # Extract and install
@@ -73,10 +82,15 @@ function Install-From-GitHub {
         New-Item -ItemType Directory -Path $INSTALL_DIR -Force | Out-Null
     }
 
+    Write-Host "Extracting archive..." -ForegroundColor $YELLOW
     try {
-        tar -xzf $tempFile -C $INSTALL_DIR
+        tar -xzvf $tempFile -C $INSTALL_DIR
+        if ($LASTEXITCODE -ne 0) {
+            throw "tar exited with code $LASTEXITCODE"
+        }
     } catch {
         Write-Host "Failed to extract files: $_" -ForegroundColor $RED
+        Write-Host "File type: $(file $tempFile)" -ForegroundColor $YELLOW
         exit 1
     } finally {
         Remove-Item $tempFile -ErrorAction SilentlyContinue
