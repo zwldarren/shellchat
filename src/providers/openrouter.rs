@@ -1,7 +1,7 @@
 use super::LLMProvider;
+use crate::error::SchatError;
 use crate::providers::base_client::BaseApiClient;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 
 #[derive(Serialize)]
 struct ChatCompletionRequest {
@@ -72,7 +72,7 @@ impl LLMProvider for OpenRouterProvider {
         &self,
         messages: &[super::Message],
         model: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    ) -> Result<String, SchatError> {
         let req_messages: Vec<ChatCompletionMessage> = messages
             .iter()
             .map(|m| ChatCompletionMessage {
@@ -100,13 +100,15 @@ impl LLMProvider for OpenRouterProvider {
         let parsed: ChatCompletionResponse = serde_json::from_str(&response_body)?;
 
         if parsed.choices.is_empty() {
-            return Err("No choices in API response".into());
+            return Err(SchatError::Api("No choices in API response".to_string()));
         }
 
         let content = parsed.choices[0].message.content.trim().to_string();
 
         if content.is_empty() {
-            return Err("Empty command received from API".into());
+            return Err(SchatError::Api(
+                "Empty command received from API".to_string(),
+            ));
         }
 
         Ok(content)
@@ -116,10 +118,7 @@ impl LLMProvider for OpenRouterProvider {
         &self,
         messages: &[super::Message],
         model: &str,
-    ) -> Result<
-        futures::stream::BoxStream<'static, Result<String, Box<dyn Error + Send + Sync>>>,
-        Box<dyn Error>,
-    > {
+    ) -> Result<futures::stream::BoxStream<'static, Result<String, SchatError>>, SchatError> {
         let req_messages: Vec<ChatCompletionMessage> = messages
             .iter()
             .map(|m| ChatCompletionMessage {

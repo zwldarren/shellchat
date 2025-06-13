@@ -1,8 +1,8 @@
+use crate::error::SchatError;
 use futures::stream::{BoxStream, StreamExt};
 use reqwest::{Client, Response};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::error::Error;
 
 pub struct BaseApiClient {
     endpoint: String,
@@ -27,8 +27,18 @@ impl BaseApiClient {
         &self,
         path: &str,
         payload: &T,
-    ) -> Result<Response, Box<dyn Error>> {
-        let client = Client::builder().build()?;
+    ) -> Result<Response, SchatError> {
+        // Validate API key
+        if self.api_key.is_empty() {
+            return Err(SchatError::Api(
+                "API key is missing. Please set your API key in the configuration".to_string(),
+            ));
+        }
+
+        let client = Client::builder()
+            .build()
+            .map_err(|e| SchatError::Network(format!("Failed to create HTTP client: {}", e)))?;
+
         let url = format!("{}/{}", self.endpoint, path);
 
         let mut request = client
@@ -40,7 +50,21 @@ impl BaseApiClient {
             request = request.header(key, value);
         }
 
-        let response = request.json(payload).send().await?;
+        let response = request
+            .json(payload)
+            .send()
+            .await
+            .map_err(|e| SchatError::Network(format!("API request failed: {}", e)))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to read error response".to_string());
+            return Err(SchatError::Api(format!("API error: {} - {}", status, body)));
+        }
+
         Ok(response)
     }
 
@@ -48,17 +72,17 @@ impl BaseApiClient {
         &self,
         path: &str,
         payload: &impl Serialize,
-    ) -> Result<BoxStream<'static, Result<String, Box<dyn Error + Send + Sync>>>, Box<dyn Error>>
-    {
+    ) -> Result<BoxStream<'static, Result<String, SchatError>>, SchatError> {
         let response = self.send_request(path, payload).await?;
         let stream = response.bytes_stream();
 
         let s = stream
             .map(|item| {
-                item.map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
+                item.map_err(|e| SchatError::Network(format!("Stream error: {}", e)))
                     .and_then(|chunk| {
-                        String::from_utf8(chunk.to_vec())
-                            .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
+                        String::from_utf8(chunk.to_vec()).map_err(|e| {
+                            SchatError::Serialization(format!("UTF-8 conversion error: {}", e))
+                        })
                     })
             })
             .filter_map(|res| async move {
@@ -71,11 +95,19 @@ impl BaseApiClient {
                                 if data == "[DONE]" {
                                     return None;
                                 }
-                                if let Ok(parsed) = serde_json::from_str::<StreamResponse>(data) {
-                                    if let Some(choice) = parsed.choices.get(0) {
-                                        if let Some(c) = &choice.delta.content {
-                                            content.push_str(c);
+                                match serde_json::from_str::<StreamResponse>(data) {
+                                    Ok(parsed) => {
+                                        if let Some(choice) = parsed.choices.get(0) {
+                                            if let Some(c) = &choice.delta.content {
+                                                content.push_str(c);
+                                            }
                                         }
+                                    }
+                                    Err(e) => {
+                                        return Some(Err(SchatError::Serialization(format!(
+                                            "Failed to parse stream data: {}",
+                                            e
+                                        ))));
                                     }
                                 }
                             }

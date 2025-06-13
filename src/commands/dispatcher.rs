@@ -2,7 +2,8 @@ use super::{
     ChatState,
     handler::{ClearCommand, CommandHandler, HelpCommand, ModelCommand, QuitCommand},
 };
-use std::{collections::HashMap, error::Error};
+use crate::error::SchatError;
+use std::collections::HashMap;
 
 pub struct CommandDispatcher {
     commands: HashMap<&'static str, Box<dyn CommandHandler>>,
@@ -26,7 +27,7 @@ impl CommandDispatcher {
         command: &str,
         args: &[&str],
         state: &mut ChatState,
-    ) -> Result<Option<String>, Box<dyn Error>> {
+    ) -> Result<Option<String>, SchatError> {
         match self.commands.get(command) {
             Some(handler) => handler.execute(state, args),
             None => Ok(Some(format!("Unknown command: {}", command))),

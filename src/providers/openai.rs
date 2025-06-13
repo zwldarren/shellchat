@@ -1,7 +1,7 @@
 use super::LLMProvider;
+use crate::error::SchatError;
 use crate::providers::base_client::BaseApiClient;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 
 #[derive(Serialize)]
 struct ChatCompletionRequest {
@@ -58,7 +58,7 @@ impl LLMProvider for OpenAIProvider {
         &self,
         messages: &[super::Message],
         model: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    ) -> Result<String, SchatError> {
         let req_messages: Vec<ChatCompletionMessage> = messages
             .iter()
             .map(|m| ChatCompletionMessage {
@@ -102,10 +102,7 @@ impl LLMProvider for OpenAIProvider {
         &self,
         messages: &[super::Message],
         model: &str,
-    ) -> Result<
-        futures::stream::BoxStream<'static, Result<String, Box<dyn Error + Send + Sync>>>,
-        Box<dyn Error>,
-    > {
+    ) -> Result<futures::stream::BoxStream<'static, Result<String, SchatError>>, SchatError> {
         let req_messages: Vec<ChatCompletionMessage> = messages
             .iter()
             .map(|m| ChatCompletionMessage {

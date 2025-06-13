@@ -9,6 +9,7 @@ mod cli;
 mod commands;
 mod config;
 mod display;
+mod error;
 mod executor;
 mod providers;
 mod system;
@@ -17,6 +18,7 @@ mod utils;
 use crate::cli::Args;
 use crate::commands::{ChatState, create_command_registry};
 use crate::display::UserChoice;
+use crate::error::SchatError;
 use crate::executor::execute_command;
 use crate::providers::{
     LLMProvider, Message, Role, openai::OpenAIProvider, openrouter::OpenRouterProvider,
@@ -67,10 +69,12 @@ fn merge_config_with_args(
     (provider, base_url, model, provider_config.api_key.clone())
 }
 
+// Error handling is now unified through SchatError in error.rs
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), SchatError> {
     let args = Args::parse();
-    let config = Config::load();
+    let config = Config::load()?;
     let (provider_enum, base_url, model, api_key) = merge_config_with_args(&config, &args);
     let system_info = SystemInfo::new();
 
@@ -93,7 +97,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let context = if !std::io::stdin().is_terminal() {
         let mut buffer = String::new();
-        io::stdin().read_to_string(&mut buffer)?;
+        io::stdin()
+            .read_to_string(&mut buffer)
+            .map_err(|e| SchatError::Input(format!("Failed to read from stdin: {}", e)))?;
         Some(buffer)
     } else {
         None
@@ -117,7 +123,7 @@ async fn handle_shell_mode(
     model: &str,
     system_info: &SystemInfo,
     context: Option<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), SchatError> {
     // Create enhanced system prompt
     let prompt = SYSTEM_PROMPT_FOR_SHELL
         .replace("{shell}", &system_info.shell_path)
@@ -128,7 +134,9 @@ async fn handle_shell_mode(
         (None, Some(stdin_ctx)) => format!("<pipe>{}</pipe>", stdin_ctx),
         (Some(arg_q), None) => arg_q.to_string(),
         (None, None) => {
-            return Err("Query argument missing for shell mode".into());
+            return Err(SchatError::Input(
+                "Query argument missing for shell mode".to_string(),
+            ));
         }
     };
     let messages = vec![
@@ -212,7 +220,7 @@ async fn handle_shell_mode(
 async fn handle_continuous_chat_mode(
     provider: Box<dyn LLMProvider>,
     model: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), SchatError> {
     let mut state = ChatState::new(provider, model);
     let command_registry = create_command_registry();
 
@@ -304,13 +312,13 @@ async fn handle_chat_mode(
     provider: Box<dyn LLMProvider>,
     model: &str,
     context: Option<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), SchatError> {
     let final_query = match (args.query.as_deref(), context) {
         (Some(arg_q), Some(stdin_ctx)) => format!("<pipe>{}</pipe>\n\n{}", stdin_ctx, arg_q),
         (None, Some(stdin_ctx)) => format!("<pipe>{}</pipe>", stdin_ctx),
         (Some(arg_q), None) => arg_q.to_string(),
         (None, None) => {
-            return Err("No query provided".into());
+            return Err(SchatError::Input("No query provided".to_string()));
         }
     };
 

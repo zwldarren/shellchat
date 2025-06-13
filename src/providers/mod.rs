@@ -1,6 +1,6 @@
+use crate::error::SchatError;
 use async_trait::async_trait;
 use futures::stream::BoxStream;
-use std::error::Error;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Role {
@@ -17,17 +17,13 @@ pub struct Message {
 
 #[async_trait]
 pub trait LLMProvider {
-    async fn get_response(
-        &self,
-        messages: &[Message],
-        model: &str,
-    ) -> Result<String, Box<dyn Error>>;
+    async fn get_response(&self, messages: &[Message], model: &str) -> Result<String, SchatError>;
 
     async fn get_response_stream(
         &self,
         messages: &[Message],
         model: &str,
-    ) -> Result<BoxStream<'static, Result<String, Box<dyn Error + Send + Sync>>>, Box<dyn Error>>;
+    ) -> Result<BoxStream<'static, Result<String, SchatError>>, SchatError>;
 }
 
 /// Process response text to extract command or code block

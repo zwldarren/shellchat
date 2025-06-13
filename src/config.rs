@@ -1,3 +1,4 @@
+use crate::error::SchatError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -63,32 +64,42 @@ impl Config {
         Self::config_dir().join(".schat").join("config.yaml")
     }
 
-    pub fn load() -> Config {
+    pub fn load() -> Result<Config, SchatError> {
         let config_path = Self::config_path();
         let config_dir = Self::config_dir().join(".schat");
 
         // If config file exists and can be parsed, return it
         if config_path.exists() {
-            if let Ok(contents) = fs::read_to_string(&config_path) {
-                match serde_yml::from_str::<Config>(&contents) {
-                    Ok(mut config) => {
-                        // Ensure providers HashMap exists
-                        if config.providers.is_empty() {
-                            config.providers = HashMap::new();
+            match fs::read_to_string(&config_path) {
+                Ok(contents) => {
+                    match serde_yml::from_str::<Config>(&contents) {
+                        Ok(mut config) => {
+                            // Ensure providers HashMap exists
+                            if config.providers.is_empty() {
+                                config.providers = HashMap::new();
+                            }
+                            return Ok(config);
                         }
-                        return config;
+                        Err(e) => {
+                            // Return error with context
+                            return Err(SchatError::Config(format!(
+                                "Failed to parse config file {}: {}",
+                                config_path.display(),
+                                e
+                            )));
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("Error parsing config file: {}", e);
-                        // Fall through to create new config
-                    }
+                }
+                Err(e) => {
+                    // Return error with context
+                    return Err(SchatError::Io { source: e });
                 }
             }
         }
 
         // Ensure config directory exists
         if !config_dir.exists() {
-            let _ = fs::create_dir_all(&config_dir);
+            fs::create_dir_all(&config_dir).map_err(|e| SchatError::Io { source: e })?;
         }
 
         // Create new config with defaults
@@ -97,11 +108,14 @@ impl Config {
             auto_confirm: false,
             providers: HashMap::new(),
         };
-        let _ = config.save(); // Ignore save errors
-        config
+
+        // Try to save but don't fail if it doesn't work
+        let _ = config.save();
+
+        Ok(config)
     }
 
-    pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save(&self) -> Result<(), SchatError> {
         let config_dir = Self::config_dir();
         let config_path = Self::config_path();
 

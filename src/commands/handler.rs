@@ -1,13 +1,9 @@
 use super::ChatState;
+use crate::error::SchatError;
 use crate::providers::Message;
-use std::error::Error;
 
 pub trait CommandHandler {
-    fn execute(
-        &self,
-        state: &mut ChatState,
-        args: &[&str],
-    ) -> Result<Option<String>, Box<dyn Error>>;
+    fn execute(&self, state: &mut ChatState, args: &[&str]) -> Result<Option<String>, SchatError>;
     fn help(&self) -> &'static str;
 }
 
@@ -17,11 +13,7 @@ pub struct ClearCommand;
 pub struct ModelCommand;
 
 impl CommandHandler for QuitCommand {
-    fn execute(
-        &self,
-        state: &mut ChatState,
-        _args: &[&str],
-    ) -> Result<Option<String>, Box<dyn Error>> {
+    fn execute(&self, state: &mut ChatState, _args: &[&str]) -> Result<Option<String>, SchatError> {
         state.should_continue = false;
         Ok(None)
     }
@@ -36,7 +28,7 @@ impl CommandHandler for HelpCommand {
         &self,
         _state: &mut ChatState,
         _args: &[&str],
-    ) -> Result<Option<String>, Box<dyn Error>> {
+    ) -> Result<Option<String>, SchatError> {
         let help_text = vec![
             "Available commands:",
             QuitCommand.help(),
@@ -55,11 +47,7 @@ impl CommandHandler for HelpCommand {
 }
 
 impl CommandHandler for ClearCommand {
-    fn execute(
-        &self,
-        state: &mut ChatState,
-        _args: &[&str],
-    ) -> Result<Option<String>, Box<dyn Error>> {
+    fn execute(&self, state: &mut ChatState, _args: &[&str]) -> Result<Option<String>, SchatError> {
         state.messages = vec![Message {
             role: crate::providers::Role::System,
             content: "You are a helpful assistant.".to_string(),
@@ -73,11 +61,7 @@ impl CommandHandler for ClearCommand {
 }
 
 impl CommandHandler for ModelCommand {
-    fn execute(
-        &self,
-        state: &mut ChatState,
-        args: &[&str],
-    ) -> Result<Option<String>, Box<dyn Error>> {
+    fn execute(&self, state: &mut ChatState, args: &[&str]) -> Result<Option<String>, SchatError> {
         if args.is_empty() {
             Ok(Some(format!("Current model: {}", state.model)))
         } else {
