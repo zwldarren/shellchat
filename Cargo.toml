@@ -21,3 +21,4 @@ thiserror = "2.0"
 prettyplease = "0.2.34"
 syn = { version = "2", default-features = false, features = ["full", "parsing"] }
 rustyline = "16.0.0"
+chrono = "0.4.41"

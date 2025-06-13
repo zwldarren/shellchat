@@ -60,6 +60,10 @@ impl Config {
         }
     }
 
+    pub fn history_dir() -> PathBuf {
+        Self::config_dir().join(".schat").join("history")
+    }
+
     pub fn config_path() -> PathBuf {
         Self::config_dir().join(".schat").join("config.yaml")
     }

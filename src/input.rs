@@ -242,10 +242,10 @@ pub fn create_editor(
 
     let history_path = dirs::home_dir()
         .map(|mut path| {
-            path.push(".schat/history/input_history.txt");
+            path.push(".schat/input_history.txt");
             path
         })
-        .unwrap_or_else(|| Path::new(".schat/history/input_history.txt").to_path_buf());
+        .unwrap_or_else(|| Path::new(".schat/input_history.txt").to_path_buf());
     let _ = editor.load_history(&history_path);
 
     Ok(editor)
@@ -286,10 +286,10 @@ pub fn read_input(
 pub fn save_history(editor: &mut Editor<ShellHelper, FileHistory>) -> Result<(), SchatError> {
     let history_path = dirs::home_dir()
         .map(|mut path| {
-            path.push(".schat/history/input_history.txt");
+            path.push(".schat/input_history.txt");
             path
         })
-        .unwrap_or_else(|| Path::new(".schat/history/input_history.txt").to_path_buf());
+        .unwrap_or_else(|| Path::new(".schat/input_history.txt").to_path_buf());
 
     // Ensure the history directory exists
     if let Some(parent) = history_path.parent() {

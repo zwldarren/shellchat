@@ -1,6 +1,9 @@
 use super::{
     ChatState,
-    handler::{ClearCommand, CommandHandler, HelpCommand, ModelCommand, QuitCommand},
+    handler::{
+        ClearCommand, CommandHandler, DeleteHistoryCommand, HelpCommand, ListHistoryCommand,
+        LoadHistoryCommand, ModelCommand, QuitCommand, SaveHistoryCommand,
+    },
 };
 use crate::error::SchatError;
 use std::clone::Clone;
@@ -20,6 +23,22 @@ impl Clone for CommandDispatcher {
         new_commands.insert("help", Box::new(HelpCommand) as Box<dyn CommandHandler>);
         new_commands.insert("clear", Box::new(ClearCommand) as Box<dyn CommandHandler>);
         new_commands.insert("model", Box::new(ModelCommand) as Box<dyn CommandHandler>);
+        new_commands.insert(
+            "save",
+            Box::new(SaveHistoryCommand) as Box<dyn CommandHandler>,
+        );
+        new_commands.insert(
+            "load",
+            Box::new(LoadHistoryCommand) as Box<dyn CommandHandler>,
+        );
+        new_commands.insert(
+            "list",
+            Box::new(ListHistoryCommand) as Box<dyn CommandHandler>,
+        );
+        new_commands.insert(
+            "delete",
+            Box::new(DeleteHistoryCommand) as Box<dyn CommandHandler>,
+        );
 
         Self {
             commands: new_commands,
@@ -36,6 +55,22 @@ impl CommandDispatcher {
         commands.insert("help", Box::new(HelpCommand) as Box<dyn CommandHandler>);
         commands.insert("clear", Box::new(ClearCommand) as Box<dyn CommandHandler>);
         commands.insert("model", Box::new(ModelCommand) as Box<dyn CommandHandler>);
+        commands.insert(
+            "save",
+            Box::new(SaveHistoryCommand) as Box<dyn CommandHandler>,
+        );
+        commands.insert(
+            "load",
+            Box::new(LoadHistoryCommand) as Box<dyn CommandHandler>,
+        );
+        commands.insert(
+            "list",
+            Box::new(ListHistoryCommand) as Box<dyn CommandHandler>,
+        );
+        commands.insert(
+            "delete",
+            Box::new(DeleteHistoryCommand) as Box<dyn CommandHandler>,
+        );
 
         Self { commands }
     }
