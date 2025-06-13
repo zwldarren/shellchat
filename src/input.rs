@@ -255,7 +255,12 @@ pub fn create_editor(
 pub fn read_input(
     editor: &mut Editor<ShellHelper, FileHistory>,
 ) -> Result<Option<String>, SchatError> {
-    match editor.readline(&style("> ").bold().cyan().to_string()) {
+    let prompt = if cfg!(windows) && std::env::var("PSModulePath").is_ok() {
+        "> ".to_string()
+    } else {
+        style("> ").bold().cyan().to_string()
+    };
+    match editor.readline(&prompt) {
         Ok(line) => {
             // Add to history if non-empty and starts with '/'
             if !line.trim().is_empty() && line.starts_with('/') {
