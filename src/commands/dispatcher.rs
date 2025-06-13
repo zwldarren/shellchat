@@ -3,10 +3,28 @@ use super::{
     handler::{ClearCommand, CommandHandler, HelpCommand, ModelCommand, QuitCommand},
 };
 use crate::error::SchatError;
+use std::clone::Clone;
 use std::collections::HashMap;
 
 pub struct CommandDispatcher {
     commands: HashMap<&'static str, Box<dyn CommandHandler>>,
+}
+
+impl Clone for CommandDispatcher {
+    fn clone(&self) -> Self {
+        // Create a new instance with the same commands
+        let mut new_commands = HashMap::new();
+
+        // Re-register all commands
+        new_commands.insert("quit", Box::new(QuitCommand) as Box<dyn CommandHandler>);
+        new_commands.insert("help", Box::new(HelpCommand) as Box<dyn CommandHandler>);
+        new_commands.insert("clear", Box::new(ClearCommand) as Box<dyn CommandHandler>);
+        new_commands.insert("model", Box::new(ModelCommand) as Box<dyn CommandHandler>);
+
+        Self {
+            commands: new_commands,
+        }
+    }
 }
 
 impl CommandDispatcher {
@@ -20,6 +38,11 @@ impl CommandDispatcher {
         commands.insert("model", Box::new(ModelCommand) as Box<dyn CommandHandler>);
 
         Self { commands }
+    }
+
+    /// Returns a list of all registered command names
+    pub fn get_command_names(&self) -> Vec<&'static str> {
+        self.commands.keys().copied().collect()
     }
 
     pub fn execute(

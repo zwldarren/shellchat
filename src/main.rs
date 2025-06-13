@@ -1,6 +1,5 @@
 use clap::Parser;
 use config::{Config, Provider, ProviderConfig};
-use console::style;
 use futures::StreamExt;
 use is_terminal::IsTerminal;
 use std::io::{self, Read, Write};
@@ -11,9 +10,9 @@ mod config;
 mod display;
 mod error;
 mod executor;
+mod input;
 mod providers;
 mod system;
-mod utils;
 
 use crate::cli::Args;
 use crate::commands::{ChatState, create_command_registry};
@@ -224,15 +223,22 @@ async fn handle_continuous_chat_mode(
     let mut state = ChatState::new(provider, model);
     let command_registry = create_command_registry();
 
-    println!("Entering chat mode. Type '/help' for available commands.");
+    println!(
+        "Entering chat mode. Type '/help' for available commands. Press Ctrl+D or type /quit to exit."
+    );
+
+    // Create a rustyline editor with our custom helper
+    let mut editor = input::create_editor(command_registry.clone())?;
 
     loop {
-        print!("{}", style("> ").bold().cyan());
-        io::stdout().flush()?;
+        // Use rustyline to get input with enhanced features
+        let input_result = input::read_input(&mut editor)?;
 
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        let input = input.trim();
+        // Check if we should exit (Ctrl+D or error)
+        let input = match input_result {
+            Some(input) => input.trim().to_string(),
+            None => break,
+        };
 
         if input.is_empty() {
             continue;
@@ -265,7 +271,7 @@ async fn handle_continuous_chat_mode(
         // Normal message processing
         state.messages.push(Message {
             role: Role::User,
-            content: input.to_string(),
+            content: input,
         });
 
         let mut stream = state
@@ -303,6 +309,9 @@ async fn handle_continuous_chat_mode(
             content: full_response,
         });
     }
+
+    // Save history before exiting
+    input::save_history(&mut editor)?;
 
     Ok(())
 }

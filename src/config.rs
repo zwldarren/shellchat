@@ -116,12 +116,13 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<(), SchatError> {
-        let config_dir = Self::config_dir();
         let config_path = Self::config_path();
 
         // Create config directory if it doesn't exist
-        if !config_dir.exists() {
-            fs::create_dir_all(&config_dir)?;
+        if let Some(parent) = config_path.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent)?;
+            }
         }
 
         // Serialize config to YAML
