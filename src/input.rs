@@ -1,5 +1,5 @@
 use crate::commands::dispatcher::CommandDispatcher;
-use crate::error::SchatError;
+use crate::core::error::SchatError;
 
 use console::style;
 use rustyline::completion::{Completer, FilenameCompleter, Pair};
@@ -48,8 +48,8 @@ impl Completer for ShellCompleter {
                 .iter()
                 .filter(|cmd| cmd.starts_with(command_part))
                 .map(|cmd| Pair {
-                    display: cmd.to_string(),
-                    replacement: cmd.to_string(),
+                    display: cmd.clone(),
+                    replacement: cmd.clone(),
                 })
                 .collect();
 

@@ -1,5 +1,5 @@
+use crate::core::error::SchatError;
 use crate::display;
-use crate::error::SchatError;
 use crate::system::{ShellType, SystemInfo};
 use std::process::{Command, Stdio};
 

@@ -1,5 +1,5 @@
 use super::LLMProvider;
-use crate::error::SchatError;
+use crate::core::error::SchatError;
 use crate::providers::base_client::BaseApiClient;
 use serde::{Deserialize, Serialize};
 
@@ -31,34 +31,38 @@ struct MessageContent {
     content: String,
 }
 
+#[derive(Clone)]
 pub struct OpenAIProvider {
     client: BaseApiClient,
+    model: String,
 }
 
 impl OpenAIProvider {
-    pub fn new(api_key: Option<String>) -> Self {
+    pub fn new(api_key: Option<String>, model: String) -> Self {
         let endpoint = "https://api.openai.com/v1".to_string();
         let api_key = api_key.unwrap_or_default();
         Self {
             client: BaseApiClient::new(endpoint, api_key, None),
+            model,
         }
     }
 
-    pub fn with_endpoint(endpoint: String, api_key: Option<String>) -> Self {
+    pub fn with_endpoint(endpoint: String, api_key: Option<String>, model: String) -> Self {
         let api_key = api_key.unwrap_or_default();
         Self {
             client: BaseApiClient::new(endpoint, api_key, None),
+            model,
         }
     }
 }
 
 #[async_trait::async_trait]
 impl LLMProvider for OpenAIProvider {
-    async fn get_response(
-        &self,
-        messages: &[super::Message],
-        model: &str,
-    ) -> Result<String, SchatError> {
+    fn clone_provider(&self) -> Box<dyn LLMProvider> {
+        Box::new(self.clone())
+    }
+
+    async fn get_response(&self, messages: &[super::Message]) -> Result<String, SchatError> {
         let req_messages: Vec<ChatCompletionMessage> = messages
             .iter()
             .map(|m| ChatCompletionMessage {
@@ -72,7 +76,7 @@ impl LLMProvider for OpenAIProvider {
             .collect();
 
         let payload = ChatCompletionRequest {
-            model: model.to_string(),
+            model: self.model.clone(),
             messages: req_messages,
             stream: None,
         };
@@ -82,7 +86,7 @@ impl LLMProvider for OpenAIProvider {
             .send_request("chat/completions", &payload)
             .await?;
 
-        let response_body = response.text().await?;
+        let response_body: String = response.text().await?;
         let parsed: ChatCompletionResponse = serde_json::from_str(&response_body)?;
 
         if parsed.choices.is_empty() {
@@ -101,7 +105,6 @@ impl LLMProvider for OpenAIProvider {
     async fn get_response_stream(
         &self,
         messages: &[super::Message],
-        model: &str,
     ) -> Result<futures::stream::BoxStream<'static, Result<String, SchatError>>, SchatError> {
         let req_messages: Vec<ChatCompletionMessage> = messages
             .iter()
@@ -116,7 +119,7 @@ impl LLMProvider for OpenAIProvider {
             .collect();
 
         let payload = ChatCompletionRequest {
-            model: model.to_string(),
+            model: self.model.clone(),
             messages: req_messages,
             stream: Some(true),
         };
@@ -127,5 +130,8 @@ impl LLMProvider for OpenAIProvider {
             .await?;
 
         Ok(stream)
+    }
+    fn set_model(&mut self, model: &str) {
+        self.model = model.to_string();
     }
 }

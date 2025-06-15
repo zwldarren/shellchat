@@ -1,9 +1,10 @@
-use crate::error::SchatError;
+use crate::core::error::SchatError;
 use futures::stream::{BoxStream, StreamExt};
 use reqwest::{Client, Response};
 use serde::Serialize;
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct BaseApiClient {
     endpoint: String,
     api_key: String,

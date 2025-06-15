@@ -1,83 +1,22 @@
 use super::{
     ChatState,
     handler::{
-        ClearCommand, CommandHandler, DeleteHistoryCommand, HelpCommand, ListHistoryCommand,
-        LoadHistoryCommand, ModelCommand, QuitCommand, SaveHistoryCommand,
+        ClearCommand, DeleteHistoryCommand, HelpCommand, ListHistoryCommand, LoadHistoryCommand,
+        ModelCommand, QuitCommand, SaveHistoryCommand,
     },
+    registry::CommandRegistry,
 };
-use crate::error::SchatError;
-use std::clone::Clone;
-use std::collections::HashMap;
+use crate::core::error::SchatError;
+use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct CommandDispatcher {
-    commands: HashMap<&'static str, Box<dyn CommandHandler>>,
-}
-
-impl Clone for CommandDispatcher {
-    fn clone(&self) -> Self {
-        // Create a new instance with the same commands
-        let mut new_commands = HashMap::new();
-
-        // Re-register all commands
-        new_commands.insert("quit", Box::new(QuitCommand) as Box<dyn CommandHandler>);
-        new_commands.insert("help", Box::new(HelpCommand) as Box<dyn CommandHandler>);
-        new_commands.insert("clear", Box::new(ClearCommand) as Box<dyn CommandHandler>);
-        new_commands.insert("model", Box::new(ModelCommand) as Box<dyn CommandHandler>);
-        new_commands.insert(
-            "save",
-            Box::new(SaveHistoryCommand) as Box<dyn CommandHandler>,
-        );
-        new_commands.insert(
-            "load",
-            Box::new(LoadHistoryCommand) as Box<dyn CommandHandler>,
-        );
-        new_commands.insert(
-            "list",
-            Box::new(ListHistoryCommand) as Box<dyn CommandHandler>,
-        );
-        new_commands.insert(
-            "delete",
-            Box::new(DeleteHistoryCommand) as Box<dyn CommandHandler>,
-        );
-
-        Self {
-            commands: new_commands,
-        }
-    }
+    registry: Arc<CommandRegistry>,
 }
 
 impl CommandDispatcher {
-    pub fn new() -> Self {
-        let mut commands = HashMap::new();
-
-        // Register all commands
-        commands.insert("quit", Box::new(QuitCommand) as Box<dyn CommandHandler>);
-        commands.insert("help", Box::new(HelpCommand) as Box<dyn CommandHandler>);
-        commands.insert("clear", Box::new(ClearCommand) as Box<dyn CommandHandler>);
-        commands.insert("model", Box::new(ModelCommand) as Box<dyn CommandHandler>);
-        commands.insert(
-            "save",
-            Box::new(SaveHistoryCommand) as Box<dyn CommandHandler>,
-        );
-        commands.insert(
-            "load",
-            Box::new(LoadHistoryCommand) as Box<dyn CommandHandler>,
-        );
-        commands.insert(
-            "list",
-            Box::new(ListHistoryCommand) as Box<dyn CommandHandler>,
-        );
-        commands.insert(
-            "delete",
-            Box::new(DeleteHistoryCommand) as Box<dyn CommandHandler>,
-        );
-
-        Self { commands }
-    }
-
-    /// Returns a list of all registered command names
-    pub fn get_command_names(&self) -> Vec<&'static str> {
-        self.commands.keys().copied().collect()
+    pub fn new(registry: Arc<CommandRegistry>) -> Self {
+        Self { registry }
     }
 
     pub fn execute(
@@ -86,13 +25,25 @@ impl CommandDispatcher {
         args: &[&str],
         state: &mut ChatState,
     ) -> Result<Option<String>, SchatError> {
-        match self.commands.get(command) {
-            Some(handler) => handler.execute(state, args),
-            None => Ok(Some(format!("Unknown command: {}", command))),
-        }
+        self.registry.execute(command, args, state)
+    }
+
+    pub fn get_command_names(&self) -> Vec<String> {
+        self.registry.get_command_names()
     }
 }
 
 pub fn create_command_registry() -> CommandDispatcher {
-    CommandDispatcher::new()
+    let mut registry = CommandRegistry::new();
+
+    registry.register("quit", QuitCommand);
+    registry.register("help", HelpCommand);
+    registry.register("clear", ClearCommand);
+    registry.register("model", ModelCommand);
+    registry.register("save", SaveHistoryCommand);
+    registry.register("load", LoadHistoryCommand);
+    registry.register("list", ListHistoryCommand);
+    registry.register("delete", DeleteHistoryCommand);
+
+    CommandDispatcher::new(Arc::new(registry))
 }

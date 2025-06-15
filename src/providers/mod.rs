@@ -1,4 +1,4 @@
-use crate::error::SchatError;
+use crate::core::error::SchatError;
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
@@ -18,14 +18,16 @@ pub struct Message {
 }
 
 #[async_trait]
-pub trait LLMProvider {
-    async fn get_response(&self, messages: &[Message], model: &str) -> Result<String, SchatError>;
+pub trait LLMProvider: Send + Sync {
+    fn clone_provider(&self) -> Box<dyn LLMProvider>;
+    async fn get_response(&self, messages: &[Message]) -> Result<String, SchatError>;
 
     async fn get_response_stream(
         &self,
         messages: &[Message],
-        model: &str,
     ) -> Result<BoxStream<'static, Result<String, SchatError>>, SchatError>;
+
+    fn set_model(&mut self, model: &str);
 }
 
 /// Process response text to extract command or code block
@@ -71,5 +73,6 @@ pub fn process_response(content: &str) -> String {
 }
 
 pub mod base_client;
+pub mod factory;
 pub mod openai;
 pub mod openrouter;

@@ -1,4 +1,4 @@
-use crate::error::SchatError;
+use crate::core::error::SchatError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -49,7 +49,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn config_dir() -> PathBuf {
+    fn config_dir() -> PathBuf {
         #[cfg(windows)]
         {
             dirs::home_dir().expect("Could not find home directory")
@@ -60,81 +60,66 @@ impl Config {
         }
     }
 
-    pub fn history_dir() -> PathBuf {
-        Self::config_dir().join(".schat").join("history")
-    }
-
-    pub fn config_path() -> PathBuf {
+    fn config_path() -> PathBuf {
         Self::config_dir().join(".schat").join("config.yaml")
     }
 
     pub fn load() -> Result<Config, SchatError> {
-        let config_path = Self::config_path();
-        let config_dir = Self::config_dir().join(".schat");
+        let path = Self::config_path();
+        let config_dir = path.parent().unwrap();
 
-        // If config file exists and can be parsed, return it
-        if config_path.exists() {
-            match fs::read_to_string(&config_path) {
-                Ok(contents) => {
-                    match serde_yml::from_str::<Config>(&contents) {
-                        Ok(mut config) => {
-                            // Ensure providers HashMap exists
-                            if config.providers.is_empty() {
-                                config.providers = HashMap::new();
-                            }
-                            return Ok(config);
+        if path.exists() {
+            match fs::read_to_string(&path) {
+                Ok(contents) => match serde_yml::from_str::<Config>(&contents) {
+                    Ok(mut config) => {
+                        if config.providers.is_empty() {
+                            config.providers = HashMap::new();
                         }
-                        Err(e) => {
-                            // Return error with context
-                            return Err(SchatError::Config(format!(
-                                "Failed to parse config file {}: {}",
-                                config_path.display(),
-                                e
-                            )));
-                        }
+                        return Ok(config);
                     }
-                }
+                    Err(e) => {
+                        return Err(SchatError::Config(format!(
+                            "Failed to parse config file {}: {}",
+                            path.display(),
+                            e
+                        )));
+                    }
+                },
                 Err(e) => {
-                    // Return error with context
                     return Err(SchatError::Io { source: e });
                 }
             }
         }
 
-        // Ensure config directory exists
         if !config_dir.exists() {
             fs::create_dir_all(&config_dir).map_err(|e| SchatError::Io { source: e })?;
         }
 
-        // Create new config with defaults
         let config = Config {
             active_provider: None,
             auto_confirm: false,
             providers: HashMap::new(),
         };
 
-        // Try to save but don't fail if it doesn't work
         let _ = config.save();
 
         Ok(config)
     }
 
     pub fn save(&self) -> Result<(), SchatError> {
-        let config_path = Self::config_path();
-
-        // Create config directory if it doesn't exist
-        if let Some(parent) = config_path.parent() {
+        let path = Self::config_path();
+        if let Some(parent) = path.parent() {
             if !parent.exists() {
                 fs::create_dir_all(parent)?;
             }
         }
 
-        // Serialize config to YAML
         let yaml_content = serde_yml::to_string(self)?;
-
-        // Write to file
-        fs::write(&config_path, yaml_content)?;
-
+        fs::write(&path, yaml_content)?;
         Ok(())
+    }
+
+    pub fn history_dir() -> PathBuf {
+        Self::config_dir().join(".schat").join("history")
     }
 }

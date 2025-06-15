@@ -1,5 +1,5 @@
 use super::ChatState;
-use crate::error::SchatError;
+use crate::core::error::SchatError;
 use crate::providers::Message;
 
 use console::style;
@@ -76,7 +76,9 @@ impl CommandHandler for ModelCommand {
         if args.is_empty() {
             Ok(Some(format!("Current model: {}", state.model)))
         } else {
-            state.model = args[0].to_string();
+            let new_model = args[0].to_string();
+            state.provider.set_model(&new_model);
+            state.model = new_model;
             Ok(Some(format!("Model changed to: {}", state.model)))
         }
     }
