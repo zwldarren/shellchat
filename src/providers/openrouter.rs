@@ -1,10 +1,10 @@
-use super::openai_style::OpenAIStyleProvider;
+use super::openai_compatible::OpenAICompatibleProvider;
 use crate::core::error::SchatError;
 use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct OpenRouterProvider {
-    inner: OpenAIStyleProvider,
+    inner: OpenAICompatibleProvider,
 }
 
 impl OpenRouterProvider {
@@ -19,7 +19,7 @@ impl OpenRouterProvider {
         extra_headers.insert("X-Title".to_string(), "ShellChat".to_string());
 
         Self {
-            inner: OpenAIStyleProvider::new(base_url, api_key, model, Some(extra_headers)),
+            inner: OpenAICompatibleProvider::new(base_url, api_key, model, Some(extra_headers)),
         }
     }
 
@@ -33,7 +33,7 @@ impl OpenRouterProvider {
         extra_headers.insert("X-Title".to_string(), "ShellChat".to_string());
 
         Self {
-            inner: OpenAIStyleProvider::new(endpoint, api_key, model, Some(extra_headers)),
+            inner: OpenAICompatibleProvider::new(endpoint, api_key, model, Some(extra_headers)),
         }
     }
 }

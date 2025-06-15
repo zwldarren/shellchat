@@ -77,4 +77,8 @@ providers:
   deepseek:
     api_key: your_deepseek_api_key_here
     model: deepseek-chat
+  
+  gemini:
+    api_key: your_gemini_api_key_here
+    model: gemini-2.0-flash
 ```

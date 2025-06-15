@@ -1,7 +1,41 @@
 use crate::core::error::SchatError;
-use crate::providers::base_client::BaseApiClient;
+use crate::providers::base_client::HttpClient;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+/// Common parser for OpenAI-Compatible streaming responses
+pub fn openai_stream_parser(data: String) -> Result<Option<String>, SchatError> {
+    let mut content = String::new();
+
+    for line in data.lines() {
+        if line.starts_with("data:") {
+            let data = line[5..].trim();
+            if data == "[DONE]" {
+                return Ok(None);
+            }
+
+            let parsed: serde_json::Value = serde_json::from_str(data).map_err(|e| {
+                SchatError::Serialization(format!("Failed to parse stream data: {}", e))
+            })?;
+
+            if let Some(choices) = parsed.get("choices").and_then(|c| c.as_array()) {
+                if let Some(first_choice) = choices.first() {
+                    if let Some(delta) = first_choice.get("delta") {
+                        if let Some(text) = delta.get("content").and_then(|c| c.as_str()) {
+                            content.push_str(text);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if content.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(content))
+    }
+}
 
 #[derive(Serialize)]
 struct ChatCompletionRequest {
@@ -32,20 +66,23 @@ struct MessageContent {
 }
 
 #[derive(Clone)]
-pub struct OpenAIStyleProvider {
-    client: BaseApiClient,
+pub struct OpenAICompatibleProvider {
+    client: HttpClient,
     pub model: String,
 }
 
-impl OpenAIStyleProvider {
+impl OpenAICompatibleProvider {
     pub fn new(
         base_url: String,
         api_key: String,
         model: String,
         extra_headers: Option<HashMap<String, String>>,
     ) -> Self {
+        // Use Bearer token authentication
+        let auth_header = Some(("Authorization".to_string(), format!("Bearer {}", api_key)));
+
         Self {
-            client: BaseApiClient::new(base_url, api_key, extra_headers),
+            client: HttpClient::new(base_url, auth_header, extra_headers),
             model,
         }
     }
@@ -72,10 +109,7 @@ impl OpenAIStyleProvider {
             stream: None,
         };
 
-        let response = self
-            .client
-            .send_request("chat/completions", &payload)
-            .await?;
+        let response = self.client.post("chat/completions", &payload).await?;
 
         let response_body: String = response.text().await?;
         let parsed: ChatCompletionResponse = serde_json::from_str(&response_body)?;
@@ -109,9 +143,11 @@ impl OpenAIStyleProvider {
             stream: Some(true),
         };
 
+        let response = self.client.post("chat/completions", &payload).await?;
+
         let stream = self
             .client
-            .get_response_stream("chat/completions", &payload)
+            .stream_response(response, openai_stream_parser)
             .await?;
 
         Ok(stream)

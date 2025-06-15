@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
@@ -75,6 +75,7 @@ pub fn process_response(content: &str) -> String {
 pub mod base_client;
 pub mod deepseek;
 pub mod factory;
+pub mod gemini;
 pub mod openai;
-pub mod openai_style;
+pub mod openai_compatible;
 pub mod openrouter;

@@ -1,9 +1,9 @@
-use super::openai_style::OpenAIStyleProvider;
+use super::openai_compatible::OpenAICompatibleProvider;
 use crate::core::error::SchatError;
 
 #[derive(Clone)]
 pub struct DeepSeekProvider {
-    inner: OpenAIStyleProvider,
+    inner: OpenAICompatibleProvider,
 }
 
 impl DeepSeekProvider {
@@ -11,14 +11,14 @@ impl DeepSeekProvider {
         let base_url = "https://api.deepseek.com/v1".to_string();
         let api_key = api_key.unwrap_or_default();
         Self {
-            inner: OpenAIStyleProvider::new(base_url, api_key, model, None),
+            inner: OpenAICompatibleProvider::new(base_url, api_key, model, None),
         }
     }
 
     pub fn with_endpoint(endpoint: String, api_key: Option<String>, model: String) -> Self {
         let api_key = api_key.unwrap_or_default();
         Self {
-            inner: OpenAIStyleProvider::new(endpoint, api_key, model, None),
+            inner: OpenAICompatibleProvider::new(endpoint, api_key, model, None),
         }
     }
 }
