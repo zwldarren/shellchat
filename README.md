@@ -72,6 +72,9 @@ providers:
   
   openrouter:
     api_key: your_openrouter_api_key_here
-    base_url: https://openrouter.ai/api/v1
     model: google/gemini-2.0-flash-001
+
+  deepseek:
+    api_key: your_deepseek_api_key_here
+    model: deepseek-chat
 ```

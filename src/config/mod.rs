@@ -9,6 +9,7 @@ use std::path::PathBuf;
 pub enum Provider {
     OpenAI,
     OpenRouter,
+    DeepSeek,
 }
 
 impl Provider {
@@ -16,6 +17,7 @@ impl Provider {
         match s.to_lowercase().as_str() {
             "openai" => Some(Provider::OpenAI),
             "openrouter" => Some(Provider::OpenRouter),
+            "deepseek" => Some(Provider::DeepSeek),
             _ => None,
         }
     }
@@ -24,6 +26,7 @@ impl Provider {
         match self {
             Provider::OpenAI => "https://api.openai.com/v1",
             Provider::OpenRouter => "https://openrouter.ai/api/v1",
+            Provider::DeepSeek => "https://api.deepseek.com/v1",
         }
     }
 }

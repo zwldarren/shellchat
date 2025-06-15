@@ -73,6 +73,8 @@ pub fn process_response(content: &str) -> String {
 }
 
 pub mod base_client;
+pub mod deepseek;
 pub mod factory;
 pub mod openai;
+pub mod openai_style;
 pub mod openrouter;

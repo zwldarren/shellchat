@@ -1,6 +1,8 @@
 use crate::config::{Provider, ProviderConfig};
 use crate::core::error::SchatError;
-use crate::providers::{LLMProvider, openai::OpenAIProvider, openrouter::OpenRouterProvider};
+use crate::providers::{
+    LLMProvider, deepseek::DeepSeekProvider, openai::OpenAIProvider, openrouter::OpenRouterProvider,
+};
 use std::collections::HashMap;
 
 type ProviderCreator =
@@ -45,6 +47,22 @@ impl ProviderFactory {
                     )
                 } else {
                     OpenRouterProvider::new(config.api_key.clone(), model)
+                };
+                Ok(Box::new(provider) as Box<dyn LLMProvider>)
+            }) as ProviderCreator,
+        );
+
+        creators.insert(
+            Provider::DeepSeek,
+            Box::new(|config: &ProviderConfig| {
+                let model = config
+                    .model
+                    .clone()
+                    .unwrap_or_else(|| "deepseek-chat".to_string());
+                let provider = if let Some(base_url) = &config.base_url {
+                    DeepSeekProvider::with_endpoint(base_url.clone(), config.api_key.clone(), model)
+                } else {
+                    DeepSeekProvider::new(config.api_key.clone(), model)
                 };
                 Ok(Box::new(provider) as Box<dyn LLMProvider>)
             }) as ProviderCreator,
