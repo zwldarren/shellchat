@@ -81,4 +81,8 @@ providers:
   gemini:
     api_key: your_gemini_api_key_here
     model: gemini-2.0-flash
+
+  anthropic:
+    api_key: your_anthropic_api_key_here
+    model: claude-sonnet-4-20250514
 ```

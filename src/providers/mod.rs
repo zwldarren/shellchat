@@ -72,6 +72,7 @@ pub fn process_response(content: &str) -> String {
         .unwrap_or_else(|| content.to_string())
 }
 
+pub mod anthropic;
 pub mod base_client;
 pub mod deepseek;
 pub mod factory;

@@ -1,8 +1,8 @@
 use crate::config::{Provider, ProviderConfig};
 use crate::core::error::SchatError;
 use crate::providers::{
-    LLMProvider, deepseek::DeepSeekProvider, gemini::GeminiProvider, openai::OpenAIProvider,
-    openrouter::OpenRouterProvider,
+    LLMProvider, anthropic::AnthropicProvider, deepseek::DeepSeekProvider, gemini::GeminiProvider,
+    openai::OpenAIProvider, openrouter::OpenRouterProvider,
 };
 use std::collections::HashMap;
 
@@ -80,6 +80,26 @@ impl ProviderFactory {
                     GeminiProvider::with_endpoint(base_url.clone(), config.api_key.clone(), model)
                 } else {
                     GeminiProvider::new(config.api_key.clone(), model)
+                };
+                Ok(Box::new(provider) as Box<dyn LLMProvider>)
+            }) as ProviderCreator,
+        );
+
+        creators.insert(
+            Provider::Anthropic,
+            Box::new(|config: &ProviderConfig| {
+                let model = config
+                    .model
+                    .clone()
+                    .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
+                let provider = if let Some(base_url) = &config.base_url {
+                    AnthropicProvider::with_endpoint(
+                        base_url.clone(),
+                        config.api_key.clone(),
+                        model,
+                    )
+                } else {
+                    AnthropicProvider::new(config.api_key.clone(), model)
                 };
                 Ok(Box::new(provider) as Box<dyn LLMProvider>)
             }) as ProviderCreator,

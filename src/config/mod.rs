@@ -11,6 +11,7 @@ pub enum Provider {
     OpenRouter,
     DeepSeek,
     Gemini,
+    Anthropic,
 }
 
 impl Provider {
@@ -19,6 +20,8 @@ impl Provider {
             "openai" => Some(Provider::OpenAI),
             "openrouter" => Some(Provider::OpenRouter),
             "deepseek" => Some(Provider::DeepSeek),
+            "gemini" => Some(Provider::Gemini),
+            "anthropic" => Some(Provider::Anthropic),
             _ => None,
         }
     }
@@ -29,6 +32,7 @@ impl Provider {
             Provider::OpenRouter => "https://openrouter.ai/api/v1",
             Provider::DeepSeek => "https://api.deepseek.com/v1",
             Provider::Gemini => "https://generativelanguage.googleapis.com",
+            Provider::Anthropic => "https://api.anthropic.com/v1",
         }
     }
 }
