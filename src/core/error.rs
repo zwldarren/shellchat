@@ -38,6 +38,18 @@ pub enum SchatError {
     /// Unknown or unexpected errors
     #[error("Unknown error: {0}")]
     Unknown(String),
+
+    /// Tool-related errors
+    #[error("Tool not found: {0}")]
+    ToolNotFound(String),
+
+    /// Tool execution errors
+    #[error("Tool execution error: {0}")]
+    ToolExecution(String),
+
+    /// MCP connection errors
+    #[error("MCP connection error: {0}")]
+    McpConnection(String),
 }
 
 impl From<reqwest::Error> for SchatError {

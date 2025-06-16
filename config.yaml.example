@@ -29,3 +29,22 @@ providers:
     api_key: your_anthropic_api_key_here
     base_url: https://api.anthropic.com/v1
     model: claude-sonnet-4-20250514
+
+mcp_servers:
+  - name: everything
+    type: stdio
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-everything"
+  - name: brave-search
+    type: stdio
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-brave-search"
+    envs:
+      BRAVE_API_KEY: your_brave_api_key_here
+  - name: weather-server
+    type: sse
+    url: https://weather.mcp.example.com

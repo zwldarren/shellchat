@@ -9,6 +9,7 @@ mod config;
 mod core;
 mod display;
 mod input;
+mod mcp;
 mod providers;
 mod system;
 

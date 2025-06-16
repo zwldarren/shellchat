@@ -5,11 +5,13 @@ use crate::core::error::SchatError;
 use crate::core::executor::execute_command;
 use crate::display::{self, UserChoice};
 use crate::input;
+use crate::mcp::{Tool, ToolSet, tool::get_mcp_tools};
 use crate::providers::{LLMProvider, Message, Role};
 use crate::system::SystemInfo;
 use futures::StreamExt;
 use is_terminal::IsTerminal;
 use std::io::{self, Read, Write};
+use std::sync::Arc;
 
 pub struct Application {
     pub args: Args,
@@ -155,10 +157,173 @@ impl Application {
         Ok(())
     }
 
+    async fn generate_ai_response(&self, state: &ChatState) -> Result<String, SchatError> {
+        let mut stream = state.provider.get_response_stream(&state.messages).await?;
+        io::stdout().flush()?;
+
+        let mut full_response = String::new();
+        while let Some(chunk_result) = stream.next().await {
+            match chunk_result {
+                Ok(chunk) => {
+                    if !chunk.is_empty() {
+                        let term = console::Term::stdout();
+                        term.clear_last_lines(0).ok();
+                        print!("{}", &chunk);
+                    }
+                    io::stdout().flush()?;
+                    full_response.push_str(&chunk);
+                }
+                Err(e) => {
+                    eprintln!("Stream error: {}", e);
+                    break;
+                }
+            }
+        }
+
+        if !full_response.ends_with('\n') {
+            println!();
+        }
+
+        Ok(full_response)
+    }
+
+    async fn handle_tool_calls(
+        &self,
+        message: &str,
+        tool_set: &ToolSet,
+    ) -> Result<Vec<Message>, SchatError> {
+        let mut tool_messages = Vec::new();
+
+        // Improved tool call detection that handles standard formats
+        let tool_call_pattern = r#""tool"\s*:\s*"([^"]+)"|```json\s*\{\s*"tool"\s*:\s*"([^"]+)"#;
+        let re = regex::Regex::new(tool_call_pattern).unwrap();
+
+        if let Some(caps) = re.captures(message) {
+            let tool_name = caps
+                .get(1)
+                .or_else(|| caps.get(2))
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+
+            if !tool_name.is_empty() {
+                println!("Detected tool call: {}", tool_name);
+
+                // Extract JSON arguments
+                // Try to parse the entire message as JSON
+                let tool_call: serde_json::Value = match serde_json::from_str(message) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        // Look for a JSON code block
+                        if let Some(start) = message.find("```json") {
+                            let code_start = start + 7; // Skip ```json
+                            if let Some(end) = message[code_start..].find("```") {
+                                let json_str = &message[code_start..code_start + end];
+                                serde_json::from_str(json_str)
+                                    .unwrap_or_else(|_| serde_json::json!({}))
+                            } else {
+                                serde_json::json!({})
+                            }
+                        }
+                        // Look for any code block
+                        else if let Some(start) = message.find("```") {
+                            let code_start = start + 3; // Skip ```
+                            if let Some(end) = message[code_start..].find("```") {
+                                let json_str = &message[code_start..code_start + end];
+                                serde_json::from_str(json_str)
+                                    .unwrap_or_else(|_| serde_json::json!({}))
+                            } else {
+                                serde_json::json!({})
+                            }
+                        }
+                        // Fallback to extracting first JSON object
+                        else {
+                            let json_start = message.find('{').unwrap_or(0);
+                            let json_end = message
+                                .rfind('}')
+                                .map(|pos| pos + 1)
+                                .unwrap_or(message.len());
+                            let json_str = &message[json_start..json_end];
+                            serde_json::from_str(json_str).unwrap_or_else(|_| serde_json::json!({}))
+                        }
+                    }
+                };
+
+                let args = if let Some(args_obj) = tool_call.get("arguments") {
+                    args_obj.clone()
+                } else {
+                    println!("No arguments found in tool call");
+                    serde_json::json!({})
+                };
+
+                println!(
+                    "Tool arguments: {}",
+                    serde_json::to_string_pretty(&args).unwrap_or_default()
+                );
+
+                match tool_set.call_tool(&tool_name, args).await {
+                    Ok(result) => {
+                        let pretty_result = serde_json::to_string_pretty(&result)
+                            .unwrap_or_else(|_| result.to_string());
+                        println!("Tool call successful: {}", pretty_result);
+                        tool_messages.push(Message {
+                            role: Role::User,
+                            content: format!("Tool call result: {}", pretty_result),
+                        });
+                    }
+                    Err(e) => {
+                        println!("Tool call failed: {}", e);
+                        tool_messages.push(Message {
+                            role: Role::User,
+                            content: format!("Tool call failed: {}", e),
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(tool_messages)
+    }
+
     async fn handle_continuous_chat_mode(&mut self) -> Result<(), SchatError> {
+        // Initialize MCP clients and tools
+        let mcp_clients = self.config.create_mcp_clients().await?;
+        let mut tool_set = ToolSet::new();
+
+        for (name, client) in mcp_clients {
+            println!("Connecting to MCP server: {}", name);
+            match get_mcp_tools(Arc::new(client)).await {
+                Ok(tools) => {
+                    for tool in tools {
+                        println!("Added tool: {}", tool.name());
+                        tool_set.add_tool(Arc::new(tool));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to get tools from {}: {}", name, e);
+                }
+            }
+        }
+
+        // Add tool instructions to system prompt
+        let mut tool_instructions = String::from("You have access to the following tools:\n");
+        for tool in tool_set.tools() {
+            tool_instructions.push_str(&format!("- {}: {}\n", tool.name(), tool.description()));
+        }
+        tool_instructions
+            .push_str("\nWhen you need to use a tool, output a JSON object with these fields:\n");
+        tool_instructions.push_str("{\n  \"tool\": \"tool_name\",\n  \"arguments\": {\n    \"param1\": value1,\n    \"param2\": value2\n  }\n}\n");
         let mut state = ChatState::new(
             self.provider.clone_provider(),
             &self.args.model.clone().unwrap_or_default(),
+        );
+
+        // Add tool instructions as the first system message
+        state.messages.insert(
+            0,
+            Message {
+                role: Role::System,
+                content: tool_instructions,
+            },
         );
 
         println!(
@@ -207,37 +372,30 @@ impl Application {
                 content: input,
             });
 
-            let mut stream = state.provider.get_response_stream(&state.messages).await?;
-
-            io::stdout().flush()?;
-
-            let mut full_response = String::new();
-            while let Some(chunk_result) = stream.next().await {
-                match chunk_result {
-                    Ok(chunk) => {
-                        if !chunk.is_empty() {
-                            let term = console::Term::stdout();
-                            term.clear_last_lines(0).ok();
-                            print!("{}", &chunk);
-                        }
-                        io::stdout().flush()?;
-                        full_response.push_str(&chunk);
-                    }
-                    Err(e) => {
-                        eprintln!("Stream error: {}", e);
-                        break;
-                    }
-                }
-            }
-
-            if !full_response.ends_with('\n') {
-                println!();
-            }
-
+            // Generate AI response to user input
+            let mut full_response = self.generate_ai_response(&state).await?;
             state.messages.push(Message {
                 role: Role::Assistant,
-                content: full_response,
+                content: full_response.clone(),
             });
+
+            // Process tool calls and continue conversation automatically
+            loop {
+                let tool_messages = self.handle_tool_calls(&full_response, &tool_set).await?;
+                if tool_messages.is_empty() {
+                    break;
+                }
+
+                // Add tool results to conversation
+                state.messages.extend(tool_messages);
+
+                // Generate next AI response automatically
+                full_response = self.generate_ai_response(&state).await?;
+                state.messages.push(Message {
+                    role: Role::Assistant,
+                    content: full_response.clone(),
+                });
+            }
         }
 
         input::save_history(&mut editor)?;
