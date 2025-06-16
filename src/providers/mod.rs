@@ -1,33 +1,33 @@
+use crate::core::error::SchatError;
 use async_trait::async_trait;
 use futures::stream::BoxStream;
-use std::error::Error;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
     User,
     Assistant,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: Role,
     pub content: String,
 }
 
 #[async_trait]
-pub trait LLMProvider {
-    async fn get_response(
-        &self,
-        messages: &[Message],
-        model: &str,
-    ) -> Result<String, Box<dyn Error>>;
+pub trait LLMProvider: Send + Sync {
+    fn clone_provider(&self) -> Box<dyn LLMProvider>;
+    async fn get_response(&self, messages: &[Message]) -> Result<String, SchatError>;
 
     async fn get_response_stream(
         &self,
         messages: &[Message],
-        model: &str,
-    ) -> Result<BoxStream<'static, Result<String, Box<dyn Error + Send + Sync>>>, Box<dyn Error>>;
+    ) -> Result<BoxStream<'static, Result<String, SchatError>>, SchatError>;
+
+    fn set_model(&mut self, model: &str);
 }
 
 /// Process response text to extract command or code block
@@ -72,6 +72,11 @@ pub fn process_response(content: &str) -> String {
         .unwrap_or_else(|| content.to_string())
 }
 
+pub mod anthropic;
 pub mod base_client;
+pub mod deepseek;
+pub mod factory;
+pub mod gemini;
 pub mod openai;
+pub mod openai_compatible;
 pub mod openrouter;

@@ -1,6 +1,9 @@
 active_provider: openai
 auto_confirm: false
 
+active_provider: openai
+auto_confirm: false
+
 providers:
   openai:
     api_key: your_openai_api_key_here
@@ -11,3 +14,39 @@ providers:
     api_key: your_openrouter_api_key_here
     base_url: https://openrouter.ai/api/v1
     model: google/gemini-2.0-flash-001
+
+  deepseek:
+    api_key: your_deepseek_api_key_here
+    base_url: https://api.deepseek.com/v1
+    model: deepseek-chat
+
+  gemini:
+    api_key: your_gemini_api_key_here
+    base_url: https://generativelanguage.googleapis.com
+    model: gemini-2.0-flash
+
+  anthropic:
+    api_key: your_anthropic_api_key_here
+    base_url: https://api.anthropic.com/v1
+    model: claude-sonnet-4-20250514
+
+mcp_servers:
+  - name: everything
+    enabled: false
+    type: stdio
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-everything"
+  - name: brave-search
+    type: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-brave-search"]
+    envs:
+      BRAVE_API_KEY: your_brave_api_key_here
+  - name: StreamableHttp-server
+    type: streamable-http
+    url: https://mcp.example.com/mcp
+  - name: sse-server
+    type: sse
+    url: https://mcp.example.com/sse

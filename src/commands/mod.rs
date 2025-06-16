@@ -1,5 +1,6 @@
 pub mod dispatcher;
 pub mod handler;
+pub mod registry;
 
 use crate::providers::{LLMProvider, Message};
 pub use dispatcher::create_command_registry;

@@ -1,70 +1,5 @@
-use crate::utils::text::{display_width, wrap_text};
-use console::style;
-use std::env;
+use console::{Emoji, Term, style};
 use termimad::MadSkin;
-
-/// Display text with markdown formatting
-pub fn display_markdown(text: &str) {
-    let skin = MadSkin::default();
-    println!();
-    skin.print_text(text);
-}
-
-/// Display an AI-generated command in a formatted box
-pub fn display_command(command: &str) {
-    // Beautiful command display with bash-style formatting - responsive width
-    let term = console::Term::stdout();
-    let terminal_width = term.size().1 as usize;
-    let width = std::cmp::min(terminal_width.saturating_sub(4), 100).max(50);
-
-    // Handle long commands with wrapping
-    let max_line_len = width.saturating_sub(6); // Account for "│ $ " and "│"
-    let command_lines = if display_width(command) > max_line_len {
-        wrap_text(command, max_line_len)
-    } else {
-        vec![command.to_string()]
-    };
-
-    let shell_name = if cfg!(target_os = "windows") {
-        if env::var("PSModulePath").is_ok() {
-            "powershell"
-        } else {
-            "cmd"
-        }
-    } else {
-        match env::var("SHELL")
-            .unwrap_or_else(|_| "/bin/sh".to_string())
-            .as_str()
-        {
-            "/bin/bash" => "bash",
-            "/bin/zsh" => "zsh",
-            "/bin/fish" => "fish",
-            _ => "shell",
-        }
-    };
-    let header_prefix = format!("┌─ {} ", shell_name);
-    let repeat_len = width.saturating_sub(display_width(&header_prefix) + 1);
-    let shell_header = format!("{}{}{}", header_prefix, "─".repeat(repeat_len), "┐");
-    let shell_footer = "└".to_string() + &"─".repeat(width - 2) + "┘";
-
-    println!("\n{}", style("COMMAND:").bold().magenta());
-    println!("{}", style(&shell_header).dim().green());
-
-    for (i, line) in command_lines.iter().enumerate() {
-        let prompt = if i == 0 { "$ " } else { "  " }; // Only show $ on first line
-        let content_len = prompt.len() + display_width(line);
-        let padding = width.saturating_sub(content_len + 3); // +3 for borders and spaces
-
-        println!(
-            "│ {}{}{}│",
-            style(prompt).bold().green(),
-            style(line).bold().white(),
-            " ".repeat(padding)
-        );
-    }
-
-    println!("{}", style(&shell_footer).dim().green());
-}
 
 /// Represents the user's choice after being prompted for command execution.
 #[derive(Debug, PartialEq)]
@@ -74,14 +9,105 @@ pub enum UserChoice {
     Abort,
 }
 
+/// Display mode for tool interactions
+#[derive(Debug, Clone, Copy)]
+pub enum DisplayMode {
+    /// Show all tool interactions in detail
+    Verbose,
+    /// Show minimal tool interaction info
+    Minimal,
+    /// Hide tool interactions completely
+    Hidden,
+}
+
+static GEAR: Emoji<'_, '_> = Emoji("⚙️ ", "");
+static CHECK: Emoji<'_, '_> = Emoji("✅ ", "");
+static CROSS: Emoji<'_, '_> = Emoji("❌ ", "");
+static SPARKLES: Emoji<'_, '_> = Emoji("✨ ", "");
+static TOOLS: Emoji<'_, '_> = Emoji("🔧 ", "");
+
+/// Global display mode - can be configured
+static mut DISPLAY_MODE: DisplayMode = DisplayMode::Minimal;
+
+/// Set the display mode for tool interactions
+pub fn set_display_mode(mode: DisplayMode) {
+    unsafe {
+        DISPLAY_MODE = mode;
+    }
+}
+
+/// Get current display mode
+pub fn get_display_mode() -> DisplayMode {
+    unsafe { DISPLAY_MODE }
+}
+
+/// Display a beautiful chat header
+pub fn display_chat_header() {
+    let term = Term::stdout();
+    let _ = term.clear_screen();
+
+    let box_width = 63;
+    let top_border = "╭".to_string() + &"─".repeat(box_width) + "╮";
+    let middle_border = "├".to_string() + &"─".repeat(box_width) + "┤";
+    let bottom_border = "╰".to_string() + &"─".repeat(box_width) + "╯";
+
+    println!("{}", style(top_border).dim());
+
+    // Title line - calculate padding to center the text
+    let title = "ShellChat - REPL";
+    let title_display_len = 16;
+    let padding = (box_width - title_display_len) / 2;
+    println!(
+        "{}{}{}{}{}",
+        style("│").dim(),
+        " ".repeat(padding),
+        style(title).bold().cyan(),
+        " ".repeat(box_width - padding - title_display_len),
+        style("│").dim()
+    );
+
+    println!("{}", style(middle_border).dim());
+
+    // Help line - calculate padding to center the text
+    let help_text = "Type your message and press Enter. Use /help for commands.";
+    let help_padding = (box_width - help_text.len()) / 2;
+    println!(
+        "{}{}{}{}{}",
+        style("│").dim(),
+        " ".repeat(help_padding),
+        style(help_text).dim(),
+        " ".repeat(box_width - help_padding - help_text.len()),
+        style("│").dim()
+    );
+
+    println!("{}", style(bottom_border).dim());
+    println!();
+}
+
+/// Display AI response header
+pub fn display_ai_response_header() {
+    print!("{} ", style("Assistant:").bold().green());
+}
+
+/// Display text with markdown formatting
+pub fn display_markdown(text: &str) {
+    let skin = MadSkin::default();
+    println!();
+    skin.print_text(text);
+}
+
+/// Display an AI-generated command in plain text
+pub fn display_command(command: &str) {
+    println!("\n{}", style("COMMAND:").bold().magenta());
+    println!("{}", command);
+}
+
 /// Ask user for execution confirmation
 pub fn prompt_execution_confirmation() -> UserChoice {
     let term = console::Term::stdout();
-    println!(
+    print!(
         "\n{}",
-        style("Execute this command? [E]xecute, [D]escribe, [A]bort: ")
-            .bold()
-            .cyan()
+        style("[E]xecute, [D]escribe, [A]bort: ").bold().cyan()
     );
 
     match term.read_line() {
@@ -105,46 +131,10 @@ pub fn prompt_execution_confirmation() -> UserChoice {
     }
 }
 
-/// Display an AI response in a formatted box
+/// Display an AI response in plain text
 pub fn display_response(response: &str) {
-    // Enhanced AI response display - responsive width
-    let term = console::Term::stdout();
-    let terminal_width = term.size().1 as usize;
-    let max_width = std::cmp::min(terminal_width.saturating_sub(4), 120).max(60);
-
-    // Process response lines with text wrapping for long lines
-    let max_line_len = max_width.saturating_sub(4); // Account for borders and padding
-    let wrapped_lines: Vec<String> = response
-        .lines()
-        .flat_map(|line| {
-            if display_width(line) > max_line_len {
-                wrap_text(line, max_line_len)
-            } else {
-                vec![line.to_string()]
-            }
-        })
-        .collect();
-
-    // Calculate box width based on content and terminal size
-    let content_max_len = wrapped_lines
-        .iter()
-        .map(|line| display_width(line))
-        .max()
-        .unwrap_or(0);
-    let box_width = std::cmp::min(max_width, content_max_len + 4);
-
-    let top_border = "┌".to_string() + &"─".repeat(box_width - 2) + "┐";
-    let bottom_border = "└".to_string() + &"─".repeat(box_width - 2) + "┘";
-
-    println!("\n{}", style("RESPONSE: ").bold().blue());
-    println!("{}", style(&top_border).dim().blue());
-
-    for line in wrapped_lines {
-        let padding = box_width.saturating_sub(display_width(&line) + 3);
-        println!("│ {}{}│", style(&line).bold().white(), " ".repeat(padding));
-    }
-
-    println!("{}", style(&bottom_border).dim().blue());
+    println!("\n{}", style("RESPONSE:").bold().blue());
+    println!("{}", response);
 }
 
 /// Display command stdout output
@@ -153,46 +143,8 @@ pub fn display_stdout(output: &[u8]) {
         return;
     }
     let text = String::from_utf8_lossy(output);
-
-    let term = console::Term::stdout();
-    let terminal_width = term.size().1 as usize;
-    let max_width = std::cmp::min(terminal_width.saturating_sub(4), 120).max(60);
-
-    let max_line_len = max_width.saturating_sub(4);
-    let wrapped_lines: Vec<String> = text
-        .lines()
-        .flat_map(|line| {
-            if display_width(line) > max_line_len {
-                wrap_text(line, max_line_len)
-            } else {
-                vec![line.to_string()]
-            }
-        })
-        .collect();
-
-    let content_max_len = wrapped_lines
-        .iter()
-        .map(|line| display_width(line))
-        .max()
-        .unwrap_or(0);
-
-    let header_prefix = "┌─ stdout ";
-    let header_len = display_width(header_prefix) + 1;
-    let box_width = std::cmp::min(max_width, std::cmp::max(content_max_len + 4, header_len));
-
-    let repeat_len = box_width.saturating_sub(display_width(header_prefix) + 1);
-    let top_border = format!("{}{}{}", header_prefix, "─".repeat(repeat_len), "┐");
-    let bottom_border = "└".to_string() + &"─".repeat(box_width - 2) + "┘";
-
     println!("\n{}", style("OUTPUT:").bold().blue());
-    println!("{}", style(&top_border).dim().blue());
-
-    for line in wrapped_lines {
-        let padding = box_width.saturating_sub(display_width(&line) + 3);
-        println!("│ {}{}│", style(&line).bold().white(), " ".repeat(padding));
-    }
-
-    println!("{}", style(&bottom_border).dim().blue());
+    println!("{}", text);
 }
 
 /// Display command stderr output
@@ -200,45 +152,177 @@ pub fn display_stderr(output: &[u8]) {
     // Only show error if there is actual error output
     if !output.is_empty() {
         let text = String::from_utf8_lossy(output);
-
-        let term = console::Term::stdout();
-        let terminal_width = term.size().1 as usize;
-        let max_width = std::cmp::min(terminal_width.saturating_sub(4), 120).max(60);
-
-        let max_line_len = max_width.saturating_sub(4);
-        let wrapped_lines: Vec<String> = text
-            .lines()
-            .flat_map(|line| {
-                if display_width(line) > max_line_len {
-                    wrap_text(line, max_line_len)
-                } else {
-                    vec![line.to_string()]
-                }
-            })
-            .collect();
-
-        let content_max_len = wrapped_lines
-            .iter()
-            .map(|line| display_width(line))
-            .max()
-            .unwrap_or(0);
-
-        let header_prefix = "┌─ stderr ";
-        let header_len = display_width(header_prefix) + 1;
-        let box_width = std::cmp::min(max_width, std::cmp::max(content_max_len + 4, header_len));
-
-        let repeat_len = box_width.saturating_sub(display_width(header_prefix) + 1);
-        let top_border = format!("{}{}{}", header_prefix, "─".repeat(repeat_len), "┐");
-        let bottom_border = "└".to_string() + &"─".repeat(box_width - 2) + "┘";
-
         println!("\n{}", style("ERROR:").bold().red());
-        println!("{}", style(&top_border).dim().red());
-
-        for line in wrapped_lines {
-            let padding = box_width.saturating_sub(display_width(&line) + 3);
-            println!("│ {}{}│", style(&line).bold().red(), " ".repeat(padding));
-        }
-
-        println!("{}", style(&bottom_border).dim().red());
+        println!("{}", text);
     }
+}
+
+/// Display tool call information (respects display mode)
+pub fn display_tool_call(tool_name: &str) {
+    match get_display_mode() {
+        DisplayMode::Hidden => return,
+        DisplayMode::Minimal => {
+            print!("{}{} ", TOOLS, style("using tool...").dim());
+            std::io::Write::flush(&mut std::io::stdout()).ok();
+        }
+        DisplayMode::Verbose => {
+            println!("\n{}{}", GEAR, style("Using tool:").bold().cyan());
+            println!("{}", style(tool_name).yellow());
+        }
+    }
+}
+
+/// Display tool arguments (respects display mode)
+pub fn display_tool_arguments(args: &str) {
+    match get_display_mode() {
+        DisplayMode::Hidden | DisplayMode::Minimal => return,
+        DisplayMode::Verbose => {
+            println!("{}", style("Arguments:").bold().cyan());
+            // Pretty print JSON if possible
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(args) {
+                if let Ok(pretty) = serde_json::to_string_pretty(&parsed) {
+                    println!("{}", style(pretty).dim());
+                    return;
+                }
+            }
+            println!("{}", style(args).dim());
+        }
+    }
+}
+
+/// Display successful tool result (respects display mode)
+pub fn display_tool_success(result: &str) {
+    match get_display_mode() {
+        DisplayMode::Hidden => return,
+        DisplayMode::Minimal => {
+            let term = Term::stdout();
+            // Clear the current line completely
+            print!("\r");
+            term.clear_line().ok();
+            std::io::Write::flush(&mut std::io::stdout()).ok();
+        }
+        DisplayMode::Verbose => {
+            println!(
+                "{}{}",
+                CHECK,
+                style("Tool completed successfully").bold().green()
+            );
+            // Try to pretty print JSON results
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(result) {
+                if let Ok(pretty) = serde_json::to_string_pretty(&parsed) {
+                    println!("{}", style(pretty).dim());
+                    return;
+                }
+            }
+            println!("{}", style(result).dim());
+        }
+    }
+}
+
+/// Display tool error (always shown regardless of mode)
+pub fn display_tool_error(error: &str) {
+    match get_display_mode() {
+        DisplayMode::Minimal => {
+            // Clear the "正在调用工具..." message
+            let term = Term::stdout();
+            // Clear the current line completely
+            print!("\r");
+            term.clear_line().ok();
+            println!("{}{}", CROSS, style("Tool failed").red());
+        }
+        _ => {
+            println!("{}{}", CROSS, style("Tool Error:").bold().red());
+            println!("{}", style(error).red());
+        }
+    }
+}
+
+/// Display MCP connection message (respects display mode)
+pub fn display_mcp_connection(server_name: &str) {
+    match get_display_mode() {
+        DisplayMode::Hidden => return,
+        DisplayMode::Minimal => {
+            print!("{}", style(".").dim());
+            std::io::Write::flush(&mut std::io::stdout()).ok();
+        }
+        DisplayMode::Verbose => {
+            println!(
+                "{}{} {}",
+                GEAR,
+                style("Connecting to:").bold().cyan(),
+                style(server_name).yellow()
+            );
+        }
+    }
+}
+
+/// Display added tool message (respects display mode)
+pub fn display_tool_added(tool_name: &str) {
+    match get_display_mode() {
+        DisplayMode::Hidden => return,
+        DisplayMode::Minimal => {
+            print!("{}", style(".").dim());
+            std::io::Write::flush(&mut std::io::stdout()).ok();
+        }
+        DisplayMode::Verbose => {
+            println!(
+                "{}{} {}",
+                TOOLS,
+                style("Added tool:").bold().green(),
+                style(tool_name).yellow()
+            );
+        }
+    }
+}
+
+/// Display initialization complete message
+pub fn display_initialization_complete(tool_count: usize) {
+    match get_display_mode() {
+        DisplayMode::Hidden => return,
+        DisplayMode::Minimal => {
+            println!();
+            println!(
+                "{}{} {} tools ready",
+                SPARKLES,
+                style("Ready!").bold().green(),
+                style(tool_count.to_string()).cyan()
+            );
+        }
+        DisplayMode::Verbose => {
+            println!();
+            println!(
+                "{}{} Initialization complete with {} tools",
+                SPARKLES,
+                style("Ready!").bold().green(),
+                style(tool_count.to_string()).cyan()
+            );
+        }
+    }
+    println!();
+}
+
+/// Display help for display modes
+pub fn display_mode_help() {
+    println!("{}", style("Display Modes:").bold().cyan());
+    println!(
+        "  {} - Show all tool interactions in detail",
+        style("verbose").yellow()
+    );
+    println!(
+        "  {} - Show minimal tool activity indicators",
+        style("minimal").yellow()
+    );
+    println!(
+        "  {} - Hide all tool interactions",
+        style("hidden").yellow()
+    );
+    println!();
+    println!(
+        "Current mode: {}",
+        match get_display_mode() {
+            DisplayMode::Verbose => style("verbose").green(),
+            DisplayMode::Minimal => style("minimal").green(),
+            DisplayMode::Hidden => style("hidden").green(),
+        }
+    );
 }

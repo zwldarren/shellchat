@@ -1,110 +1,126 @@
+use crate::core::error::SchatError;
 use futures::stream::{BoxStream, StreamExt};
 use reqwest::{Client, Response};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::error::Error;
 
-pub struct BaseApiClient {
-    endpoint: String,
-    api_key: String,
+/// Generic HTTP client that supports different authentication schemes
+#[derive(Clone)]
+pub struct HttpClient {
+    base_url: String,
+    auth_header: Option<(String, String)>,
     extra_headers: HashMap<String, String>,
+    query_params: HashMap<String, String>,
 }
 
-impl BaseApiClient {
+impl HttpClient {
     pub fn new(
-        endpoint: String,
-        api_key: String,
+        base_url: String,
+        auth_header: Option<(String, String)>,
         extra_headers: Option<HashMap<String, String>>,
     ) -> Self {
         Self {
-            endpoint,
-            api_key,
+            base_url,
+            auth_header,
             extra_headers: extra_headers.unwrap_or_default(),
+            query_params: HashMap::new(),
         }
     }
 
-    pub async fn send_request<T: Serialize + ?Sized>(
+    /// Add a query parameter to the client
+    pub fn add_query_param(&mut self, key: &str, value: String) {
+        self.query_params.insert(key.to_string(), value);
+    }
+
+    /// Send a POST request with JSON payload
+    pub async fn post<T: Serialize + ?Sized>(
         &self,
         path: &str,
         payload: &T,
-    ) -> Result<Response, Box<dyn Error>> {
-        let client = Client::builder().build()?;
-        let url = format!("{}/{}", self.endpoint, path);
+    ) -> Result<Response, SchatError> {
+        let client = Client::builder()
+            .build()
+            .map_err(|e| SchatError::Network(format!("Failed to create HTTP client: {}", e)))?;
 
-        let mut request = client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json");
+        let mut url = format!("{}/{}", self.base_url, path);
 
+        // Add query parameters if any
+        if !self.query_params.is_empty() {
+            url.push('?');
+            let mut first = true;
+            for (key, value) in &self.query_params {
+                if !first {
+                    url.push('&');
+                }
+                first = false;
+                url.push_str(&format!("{}={}", key, value));
+            }
+        }
+
+        let mut request = client.post(&url).header("Content-Type", "application/json");
+
+        // Add authentication header if configured
+        if let Some((key, value)) = &self.auth_header {
+            request = request.header(key, value);
+        }
+
+        // Add extra headers
         for (key, value) in &self.extra_headers {
             request = request.header(key, value);
         }
 
-        let response = request.json(payload).send().await?;
+        let response = request
+            .json(payload)
+            .send()
+            .await
+            .map_err(|e| SchatError::Network(format!("API request failed: {}", e)))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to read error response".to_string());
+            return Err(SchatError::Api(format!("API error: {} - {}", status, body)));
+        }
+
         Ok(response)
     }
 
-    pub async fn get_response_stream(
+    /// Create a streaming response handler
+    pub async fn stream_response<P>(
         &self,
-        path: &str,
-        payload: &impl Serialize,
-    ) -> Result<BoxStream<'static, Result<String, Box<dyn Error + Send + Sync>>>, Box<dyn Error>>
+        response: Response,
+        parser: P,
+    ) -> Result<BoxStream<'static, Result<String, SchatError>>, SchatError>
+    where
+        P: Fn(String) -> Result<Option<String>, SchatError> + Clone + Send + 'static,
     {
-        let response = self.send_request(path, payload).await?;
         let stream = response.bytes_stream();
 
         let s = stream
             .map(|item| {
-                item.map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
+                item.map_err(|e| SchatError::Network(format!("Stream error: {}", e)))
                     .and_then(|chunk| {
-                        String::from_utf8(chunk.to_vec())
-                            .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
+                        String::from_utf8(chunk.to_vec()).map_err(|e| {
+                            SchatError::Serialization(format!("UTF-8 conversion error: {}", e))
+                        })
                     })
             })
-            .filter_map(|res| async move {
-                match res {
-                    Ok(s) => {
-                        let mut content = String::new();
-                        for line in s.lines() {
-                            if line.starts_with("data:") {
-                                let data = line[5..].trim();
-                                if data == "[DONE]" {
-                                    return None;
-                                }
-                                if let Ok(parsed) = serde_json::from_str::<StreamResponse>(data) {
-                                    if let Some(choice) = parsed.choices.get(0) {
-                                        if let Some(c) = &choice.delta.content {
-                                            content.push_str(c);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if content.is_empty() {
-                            None
-                        } else {
-                            Some(Ok(content))
-                        }
+            .filter_map(move |res| {
+                let parser = parser.clone();
+                async move {
+                    match res {
+                        Ok(s) => match parser(s) {
+                            Ok(Some(content)) => Some(Ok(content)),
+                            Ok(None) => None,
+                            Err(e) => Some(Err(e)),
+                        },
+                        Err(e) => Some(Err(e)),
                     }
-                    Err(e) => Some(Err(e)),
                 }
             });
 
         Ok(s.boxed())
     }
-}
-
-#[derive(serde::Deserialize)]
-struct StreamResponse {
-    choices: Vec<StreamChoice>,
-}
-
-#[derive(serde::Deserialize)]
-struct StreamChoice {
-    delta: StreamDelta,
-}
-
-#[derive(serde::Deserialize)]
-struct StreamDelta {
-    content: Option<String>,
 }
