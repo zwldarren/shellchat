@@ -32,19 +32,21 @@ providers:
 
 mcp_servers:
   - name: everything
+    enabled: false
     type: stdio
     command: npx
     args:
-      - -y
+      - "-y"
       - "@modelcontextprotocol/server-everything"
   - name: brave-search
     type: stdio
     command: npx
-    args:
-      - -y
-      - "@modelcontextprotocol/server-brave-search"
+    args: ["-y", "@modelcontextprotocol/server-brave-search"]
     envs:
       BRAVE_API_KEY: your_brave_api_key_here
-  - name: weather-server
+  - name: StreamableHttp-server
+    type: streamable-http
+    url: https://mcp.example.com/mcp
+  - name: sse-server
     type: sse
-    url: https://weather.mcp.example.com
+    url: https://mcp.example.com/sse

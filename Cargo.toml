@@ -24,6 +24,7 @@ rustyline = "16.0.0"
 chrono = "0.4.41"
 rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = [
     "client",
+    "transport-streamable-http-client",
     "transport-child-process",
     "transport-sse-client",
     "reqwest"

@@ -85,4 +85,13 @@ providers:
   anthropic:
     api_key: your_anthropic_api_key_here
     model: claude-sonnet-4-20250514
+
+mcp_servers:
+  - name: everything
+    enabled: true
+    type: stdio
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-everything"
 ```

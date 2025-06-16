@@ -1,10 +1,19 @@
 use crate::core::error::SchatError;
-use rmcp::{RoleClient, ServiceExt, service::RunningService, transport::ConfigureCommandExt};
-use serde::{Deserialize, Serialize};
+use rmcp::{
+    RoleClient, ServiceExt,
+    service::RunningService,
+    transport::{ConfigureCommandExt, StreamableHttpClientTransport},
+};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as SerdeError};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Stdio;
+
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -55,14 +64,19 @@ pub struct ProviderConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
     pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     #[serde(flatten)]
     pub transport: McpTransportConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(tag = "type", rename_all = "kebab-case")]
 pub enum McpTransportConfig {
     Sse {
+        url: String,
+    },
+    StreamableHttp {
         url: String,
     },
     Stdio {
@@ -81,15 +95,16 @@ impl McpTransportConfig {
                 let transport =
                     rmcp::transport::sse_client::SseClientTransport::start(url.to_owned())
                         .await
-                        .map_err(|e| {
-                            SchatError::McpConnection(format!(
-                                "Failed to start SSE transport: {}",
-                                e
-                            ))
-                        })?;
-                ().serve(transport).await.map_err(|e| {
-                    SchatError::McpConnection(format!("Failed to serve SSE transport: {}", e))
-                })?
+                        .map_err(|e| SchatError::McpConnection(format!("SSE transport: {}", e)))?;
+                ().serve(transport)
+                    .await
+                    .map_err(|e| SchatError::McpConnection(format!("SSE serve: {}", e)))?
+            }
+            McpTransportConfig::StreamableHttp { url } => {
+                let transport = StreamableHttpClientTransport::from_uri(url.to_owned());
+                ().serve(transport)
+                    .await
+                    .map_err(|e| SchatError::McpConnection(format!("HTTP serve: {}", e)))?
             }
             McpTransportConfig::Stdio {
                 command,
@@ -98,19 +113,15 @@ impl McpTransportConfig {
             } => {
                 let transport = rmcp::transport::child_process::TokioChildProcess::new(
                     tokio::process::Command::new(command).configure(|cmd| {
-                        cmd.args(args)
-                            .envs(envs)
-                            // Suppress MCP server stdout/stderr
-                            .stderr(Stdio::null())
-                            .stdout(Stdio::null());
+                        cmd.args(args);
+                        cmd.envs(envs);
+                        cmd.stderr(Stdio::null());
+                        cmd.stdout(Stdio::null());
                     }),
-                )
-                .map_err(|e| {
-                    SchatError::McpConnection(format!("Failed to create stdio transport: {}", e))
-                })?;
-                ().serve(transport).await.map_err(|e| {
-                    SchatError::McpConnection(format!("Failed to serve stdio transport: {}", e))
-                })?
+                )?;
+                ().serve(transport)
+                    .await
+                    .map_err(|e| SchatError::McpConnection(format!("Stdio serve: {}", e)))?
             }
         };
         Ok(client)
@@ -123,7 +134,34 @@ pub struct Config {
     pub auto_confirm: bool,
     pub providers: HashMap<Provider, ProviderConfig>,
     #[serde(default)]
+    #[serde(deserialize_with = "deserialize_mcp_servers")]
     pub mcp_servers: Vec<McpServerConfig>,
+}
+
+fn deserialize_mcp_servers<'de, D>(deserializer: D) -> Result<Vec<McpServerConfig>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let values: Vec<Value> = Vec::deserialize(deserializer)?;
+    values
+        .into_iter()
+        .map(|mut v| {
+            let obj = v
+                .as_object_mut()
+                .ok_or_else(|| SerdeError::custom("Expected a map"))?;
+            if !obj.contains_key("type") {
+                if obj.contains_key("url") {
+                    obj.insert(
+                        "type".to_string(),
+                        Value::String("streamable-http".to_string()),
+                    );
+                } else if obj.contains_key("command") {
+                    obj.insert("type".to_string(), Value::String("stdio".to_string()));
+                }
+            }
+            McpServerConfig::deserialize(v).map_err(SerdeError::custom)
+        })
+        .collect()
 }
 
 impl Config {
@@ -147,30 +185,18 @@ impl Config {
         let config_dir = path.parent().unwrap();
 
         if path.exists() {
-            match fs::read_to_string(&path) {
-                Ok(contents) => match serde_yml::from_str::<Config>(&contents) {
-                    Ok(mut config) => {
-                        if config.providers.is_empty() {
-                            config.providers = HashMap::new();
-                        }
-                        return Ok(config);
-                    }
-                    Err(e) => {
-                        return Err(SchatError::Config(format!(
-                            "Failed to parse config file {}: {}",
-                            path.display(),
-                            e
-                        )));
-                    }
-                },
-                Err(e) => {
-                    return Err(SchatError::Io { source: e });
-                }
+            let contents = fs::read_to_string(&path)?;
+            let mut config = serde_yml::from_str::<Config>(&contents)
+                .map_err(|e| SchatError::Config(format!("Parse {}: {}", path.display(), e)))?;
+
+            if config.providers.is_empty() {
+                config.providers = HashMap::new();
             }
+            return Ok(config);
         }
 
         if !config_dir.exists() {
-            fs::create_dir_all(&config_dir).map_err(|e| SchatError::Io { source: e })?;
+            fs::create_dir_all(&config_dir)?;
         }
 
         let config = Config {
@@ -181,7 +207,6 @@ impl Config {
         };
 
         let _ = config.save();
-
         Ok(config)
     }
 
@@ -208,8 +233,10 @@ impl Config {
         let mut clients = HashMap::new();
 
         for server in &self.mcp_servers {
-            let client = server.transport.start().await?;
-            clients.insert(server.name.clone(), client);
+            if server.enabled {
+                let client = server.transport.start().await?;
+                clients.insert(server.name.clone(), client);
+            }
         }
 
         Ok(clients)
