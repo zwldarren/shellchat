@@ -8,8 +8,10 @@ use crate::input;
 use crate::mcp::{Tool, ToolSet, tool::get_mcp_tools};
 use crate::providers::{LLMProvider, Message, Role};
 use crate::system::SystemInfo;
+use console;
 use futures::StreamExt;
 use is_terminal::IsTerminal;
+use regex;
 use std::io::{self, Read, Write};
 use std::sync::Arc;
 
@@ -162,16 +164,44 @@ impl Application {
         io::stdout().flush()?;
 
         let mut full_response = String::new();
+        let mut display_buffer = String::new();
+        let display_mode = display::get_display_mode();
+
         while let Some(chunk_result) = stream.next().await {
             match chunk_result {
                 Ok(chunk) => {
                     if !chunk.is_empty() {
-                        let term = console::Term::stdout();
-                        term.clear_last_lines(0).ok();
-                        print!("{}", &chunk);
+                        full_response.push_str(&chunk);
+
+                        // In hidden mode, check if this looks like a tool call before displaying
+                        if matches!(display_mode, display::DisplayMode::Hidden) {
+                            display_buffer.push_str(&chunk);
+
+                            // Check if we have a complete tool call pattern
+                            let tool_call_pattern =
+                                r#""tool"\s*:\s*"([^"]+)"|```json\s*\{\s*"tool"\s*:\s*"([^"]+)"#;
+                            let re = regex::Regex::new(tool_call_pattern).unwrap();
+
+                            if re.is_match(&display_buffer) {
+                                // This is a tool call, don't display it in hidden mode
+                                continue;
+                            }
+
+                            // If buffer gets too long without matching, it's probably not a tool call
+                            if display_buffer.len() > 500 {
+                                let term = console::Term::stdout();
+                                term.clear_last_lines(0).ok();
+                                print!("{}", &display_buffer);
+                                display_buffer.clear();
+                            }
+                        } else {
+                            // Normal display mode - show everything
+                            let term = console::Term::stdout();
+                            term.clear_last_lines(0).ok();
+                            print!("{}", &chunk);
+                        }
                     }
                     io::stdout().flush()?;
-                    full_response.push_str(&chunk);
                 }
                 Err(e) => {
                     eprintln!("Stream error: {}", e);
@@ -180,7 +210,20 @@ impl Application {
             }
         }
 
-        if !full_response.ends_with('\n') {
+        // Handle any remaining buffer content in hidden mode
+        if matches!(display_mode, display::DisplayMode::Hidden) && !display_buffer.is_empty() {
+            let tool_call_pattern =
+                r#""tool"\s*:\s*"([^"]+)"|```json\s*\{\s*"tool"\s*:\s*"([^"]+)"#;
+            let re = regex::Regex::new(tool_call_pattern).unwrap();
+
+            if !re.is_match(&display_buffer) {
+                // Not a tool call, display it
+                print!("{}", &display_buffer);
+                io::stdout().flush()?;
+            }
+        }
+
+        if !full_response.ends_with('\n') && !matches!(display_mode, display::DisplayMode::Hidden) {
             println!();
         }
 
@@ -206,7 +249,7 @@ impl Application {
                 .unwrap_or_default();
 
             if !tool_name.is_empty() {
-                println!("Detected tool call: {}", tool_name);
+                display::display_tool_call(&tool_name);
 
                 // Extract JSON arguments
                 // Try to parse the entire message as JSON
@@ -255,23 +298,21 @@ impl Application {
                     serde_json::json!({})
                 };
 
-                println!(
-                    "Tool arguments: {}",
-                    serde_json::to_string_pretty(&args).unwrap_or_default()
-                );
+                let args_str = serde_json::to_string_pretty(&args).unwrap_or_default();
+                display::display_tool_arguments(&args_str);
 
                 match tool_set.call_tool(&tool_name, args).await {
                     Ok(result) => {
                         let pretty_result = serde_json::to_string_pretty(&result)
                             .unwrap_or_else(|_| result.to_string());
-                        println!("Tool call successful: {}", pretty_result);
+                        display::display_tool_success(&pretty_result);
                         tool_messages.push(Message {
                             role: Role::User,
                             content: format!("Tool call result: {}", pretty_result),
                         });
                     }
                     Err(e) => {
-                        println!("Tool call failed: {}", e);
+                        display::display_tool_error(&format!("{}", e));
                         tool_messages.push(Message {
                             role: Role::User,
                             content: format!("Tool call failed: {}", e),
@@ -285,16 +326,22 @@ impl Application {
     }
 
     async fn handle_continuous_chat_mode(&mut self) -> Result<(), SchatError> {
+        // Display beautiful chat header
+        display::display_chat_header();
+
         // Initialize MCP clients and tools
+        print!("{}Initializing tools", console::style("🔧 ").cyan());
+        io::stdout().flush()?;
+
         let mcp_clients = self.config.create_mcp_clients().await?;
         let mut tool_set = ToolSet::new();
 
         for (name, client) in mcp_clients {
-            println!("Connecting to MCP server: {}", name);
+            display::display_mcp_connection(&name);
             match get_mcp_tools(Arc::new(client)).await {
                 Ok(tools) => {
                     for tool in tools {
-                        println!("Added tool: {}", tool.name());
+                        display::display_tool_added(tool.name());
                         tool_set.add_tool(Arc::new(tool));
                     }
                 }
@@ -303,6 +350,9 @@ impl Application {
                 }
             }
         }
+
+        // Display initialization complete
+        display::display_initialization_complete(tool_set.tools().len());
 
         // Add tool instructions to system prompt
         let mut tool_instructions = String::from("You have access to the following tools:\n");
@@ -324,10 +374,6 @@ impl Application {
                 role: Role::System,
                 content: tool_instructions,
             },
-        );
-
-        println!(
-            "Entering chat mode. Type '/help' for available commands. Press Ctrl+D or type /quit to exit."
         );
 
         let mut editor = input::create_editor(self.command_dispatcher.clone())?;
@@ -356,7 +402,11 @@ impl Application {
                         }
                         Ok(None) => {}
                         Err(e) => {
-                            eprintln!("Error executing command: {}", e);
+                            eprintln!(
+                                "{}Error executing command: {}",
+                                console::style("❌ ").red(),
+                                e
+                            );
                         }
                     }
 
@@ -371,6 +421,9 @@ impl Application {
                 role: Role::User,
                 content: input,
             });
+
+            // Display AI response header
+            display::display_ai_response_header();
 
             // Generate AI response to user input
             let mut full_response = self.generate_ai_response(&state).await?;
@@ -396,6 +449,8 @@ impl Application {
                     content: full_response.clone(),
                 });
             }
+
+            println!(); // Add spacing after each conversation turn
         }
 
         input::save_history(&mut editor)?;

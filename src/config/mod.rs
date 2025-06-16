@@ -100,8 +100,9 @@ impl McpTransportConfig {
                     tokio::process::Command::new(command).configure(|cmd| {
                         cmd.args(args)
                             .envs(envs)
-                            .stderr(Stdio::inherit())
-                            .stdout(Stdio::inherit());
+                            // Suppress MCP server stdout/stderr
+                            .stderr(Stdio::null())
+                            .stdout(Stdio::null());
                     }),
                 )
                 .map_err(|e| {

@@ -1,8 +1,8 @@
 use super::{
     ChatState,
     handler::{
-        ClearCommand, DeleteHistoryCommand, HelpCommand, ListHistoryCommand, LoadHistoryCommand,
-        ModelCommand, QuitCommand, SaveHistoryCommand,
+        ClearCommand, DeleteHistoryCommand, DisplayCommand, HelpCommand, ListHistoryCommand,
+        LoadHistoryCommand, ModelCommand, QuitCommand, SaveHistoryCommand,
     },
     registry::CommandRegistry,
 };
@@ -44,6 +44,7 @@ pub fn create_command_registry() -> CommandDispatcher {
     registry.register("load", LoadHistoryCommand);
     registry.register("list", ListHistoryCommand);
     registry.register("delete", DeleteHistoryCommand);
+    registry.register("display", DisplayCommand);
 
     CommandDispatcher::new(Arc::new(registry))
 }

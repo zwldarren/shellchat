@@ -17,6 +17,7 @@ pub struct SaveHistoryCommand;
 pub struct LoadHistoryCommand;
 pub struct ListHistoryCommand;
 pub struct DeleteHistoryCommand;
+pub struct DisplayCommand;
 
 impl CommandHandler for QuitCommand {
     fn execute(&self, state: &mut ChatState, _args: &[&str]) -> Result<Option<String>, SchatError> {
@@ -46,6 +47,7 @@ impl CommandHandler for HelpCommand {
             style(LoadHistoryCommand.help()).to_string(),
             style(ListHistoryCommand.help()).to_string(),
             style(DeleteHistoryCommand.help()).to_string(),
+            style(DisplayCommand.help()).to_string(),
         ]
         .join("\n");
 
@@ -191,5 +193,48 @@ impl CommandHandler for DeleteHistoryCommand {
 
     fn help(&self) -> &'static str {
         "/delete <filename> - Delete a conversation history file"
+    }
+}
+
+impl CommandHandler for DisplayCommand {
+    fn execute(&self, _state: &mut ChatState, args: &[&str]) -> Result<Option<String>, SchatError> {
+        if args.is_empty() {
+            return Ok(Some(
+                "Usage: /display <mode> where mode is: verbose, minimal, hidden, or help"
+                    .to_string(),
+            ));
+        }
+
+        match args[0] {
+            "verbose" => {
+                crate::display::set_display_mode(crate::display::DisplayMode::Verbose);
+                Ok(Some(
+                    "Display mode set to verbose - showing all tool interactions".to_string(),
+                ))
+            }
+            "minimal" => {
+                crate::display::set_display_mode(crate::display::DisplayMode::Minimal);
+                Ok(Some(
+                    "Display mode set to minimal - showing basic tool activity".to_string(),
+                ))
+            }
+            "hidden" => {
+                crate::display::set_display_mode(crate::display::DisplayMode::Hidden);
+                Ok(Some(
+                    "Display mode set to hidden - hiding all tool interactions".to_string(),
+                ))
+            }
+            "help" => {
+                crate::display::display_mode_help();
+                Ok(None)
+            }
+            _ => Ok(Some(
+                "Unknown display mode. Use: verbose, minimal, hidden, or help".to_string(),
+            )),
+        }
+    }
+
+    fn help(&self) -> &'static str {
+        "/display <mode> - Control tool interaction visibility (verbose/minimal/hidden/help)"
     }
 }
