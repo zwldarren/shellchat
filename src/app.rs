@@ -354,27 +354,30 @@ impl Application {
         // Display initialization complete
         display::display_initialization_complete(tool_set.tools().len());
 
-        // Add tool instructions to system prompt
-        let mut tool_instructions = String::from("You have access to the following tools:\n");
-        for tool in tool_set.tools() {
-            tool_instructions.push_str(&format!("- {}: {}\n", tool.name(), tool.description()));
-        }
-        tool_instructions
-            .push_str("\nWhen you need to use a tool, output a JSON object with these fields:\n");
-        tool_instructions.push_str("{\n  \"tool\": \"tool_name\",\n  \"arguments\": {\n    \"param1\": value1,\n    \"param2\": value2\n  }\n}\n");
         let mut state = ChatState::new(
             self.provider.clone_provider(),
             &self.args.model.clone().unwrap_or_default(),
         );
 
-        // Add tool instructions as the first system message
-        state.messages.insert(
-            0,
-            Message {
-                role: Role::System,
-                content: tool_instructions,
-            },
-        );
+        // Add tool instructions if tools are available
+        if !tool_set.tools().is_empty() {
+            let mut tool_instructions = String::from("You have access to the following tools:\n");
+            for tool in tool_set.tools() {
+                tool_instructions.push_str(&format!("- {}: {}\n", tool.name(), tool.description()));
+            }
+            tool_instructions.push_str(
+                "\nWhen you need to use a tool, output a JSON object with these fields:\n",
+            );
+            tool_instructions.push_str("{\n  \"tool\": \"tool_name\",\n  \"arguments\": {\n    \"param1\": value1,\n    \"param2\": value2\n  }\n}\n");
+
+            state.messages.insert(
+                0,
+                Message {
+                    role: Role::System,
+                    content: tool_instructions,
+                },
+            );
+        }
 
         let mut editor = input::create_editor(self.command_dispatcher.clone())?;
 
